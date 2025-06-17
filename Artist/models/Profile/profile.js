@@ -82,6 +82,7 @@ const artistProfileSchema = new mongoose.Schema({
       {
         hostId: {
           type: mongoose.Schema.Types.ObjectId,
+          ref:"HostAuthentication"
         },
         rating: {
           type: Number,

@@ -33,8 +33,8 @@ const respondguestRequest = require("./Artist/Routes/respondtoGuestlist");
 const filterUsers = require("./Admin/Routes/filter");
 const AppUsers = require("./Admin/Routes/allUsers");
 const AdminForgotPassword = require("./Admin/Routes/forgotPassword");
-// const RateArtist = require("./Host/Routes/Rating");
-// const RateEvent = require("./Artist/Routes/Rating");
+const RateArtist = require("./Host/Routes/Rating");
+const RateEvent = require("./Artist/Routes/Rating");
 const app = express();
 const PORT = process.env.PORT;
 
@@ -48,7 +48,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/user/auth", userAuthentication);
-app.use("/api/user", userProfile, userFavouriteEvent, UserForgotPassword,userPaymentDetails,guestRequest); 
+app.use("/api/user", userProfile, userFavouriteEvent, UserForgotPassword,userPaymentDetails,guestRequest,RateEvent); 
 app.use("/api/host/auth", hostAuthentication);
 app.use(
   "/api/host",
@@ -58,7 +58,7 @@ app.use(
   AritstFilter,
   HostForgotPassword,
   hostPaymentDetails,
-  // RateArtist
+  RateArtist
 );
 app.use("/api/host/events", events);
 app.use("/api/artist/auth", artistAuthentication);
@@ -70,7 +70,7 @@ app.use(
   filterEvents,
   ArtistForgotPassword,
   respondguestRequest,
-  // RateEvent
+  RateEvent
 ); 
 app.use("/api/admin/auth", adminAuthentication);
 app.use("/api/admin", adminVerify,adminProfile,createUser,filterUsers,AppUsers,AdminForgotPassword);

@@ -3,9 +3,9 @@ const { apiResponse } = require("../../../utils/apiResponse");
 
 exports.rateEvent = async (req, res) => {
   const { eventId, rating } = req.body;
-  const raterId = req.user.id; // from auth middleware
-  console.log("iddddd",raterId)
-  const userType = req.user.role === "artist" ? "Artist" : "User"; // assumes you have role in token
+  const userType = req.user.role === "artist" ? "Artist" : "User";
+  const raterId =
+    req.user.role === "artist" ? req.user.artistId : req.user.userId;
 
   try {
     if (!rating || rating < 1 || rating > 5) {
@@ -40,14 +40,13 @@ exports.rateEvent = async (req, res) => {
       });
     }
 
-    // Add the new rating
+  
     event.eventRatings.push({
       userId: raterId,
       userType,
       rating,
     });
 
-    // Calculate new average
     const total = event.eventRatings.reduce((sum, r) => sum + r.rating, 0);
     event.Rating = parseFloat((total / event.eventRatings.length).toFixed(2));
 

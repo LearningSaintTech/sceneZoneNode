@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const {
-    rateArtist } = require("../controllers/Ratings/ratings");
+const {rateArtist } = require("../controllers/Ratings/ratings");
 
 const { authMiddleware } = require("../../middlewares/authMiddleware");
 

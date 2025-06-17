@@ -1,11 +1,10 @@
-const Event = require("../../../Host/models/Events/event");
+const Artist = require("../../../Artist/models/Profile/profile");
 const { apiResponse } = require("../../../utils/apiResponse");
 
-exports.rateEvent = async (req, res) => {
-  const { eventId, rating } = req.body;
-  const userType = req.user.role === "artist" ? "Artist" : "User";
-  const raterId =
-    req.user.role === "artist" ? req.user.artistId : req.user.userId;
+// Rate an artist
+exports.rateArtist = async (req, res) => {
+  const { artistId, rating } = req.body;
+  const hostId = req.user.hostId;
 
   try {
     if (!rating || rating < 1 || rating > 5) {
@@ -16,48 +15,44 @@ exports.rateEvent = async (req, res) => {
       });
     }
 
-    const event = await Event.findById(eventId);
-    if (!event) {
+    const artist = await Artist.findOne({ artistId });
+    if (!artist) {
       return apiResponse(res, {
         success: false,
-        message: "Event not found",
+        message: "Artist not found",
         statusCode: 404,
       });
     }
 
-    const alreadyRated = event.eventRatings.find(
-      (entry) =>
-        entry.userId &&
-        entry.userId.toString() === raterId &&
-        entry.userType === userType
+    // Check if host has already rated
+    const existingRating = artist.allRatings.find(
+      (entry) => entry.hostId && entry.hostId.toString() === hostId
     );
 
-    if (alreadyRated) {
+    if (existingRating) {
       return apiResponse(res, {
         success: false,
-        message: "You have already rated this event",
+        message: "You have already rated this artist",
         statusCode: 400,
       });
     }
 
-    // ✅ Now push with proper userId
-    event.eventRatings.push({
-      userId: raterId,
-      userType,
-      rating,
-    });
+    // Add new rating
+    artist.allRatings.push({ hostId, rating });
 
-    const total = event.eventRatings.reduce((sum, r) => sum + r.rating, 0);
-    event.Rating = parseFloat((total / event.eventRatings.length).toFixed(2));
+    // Calculate average rating
+    const total = artist.allRatings.reduce((acc, curr) => acc + curr.rating, 0);
+    const average = total / artist.allRatings.length;
 
-    await event.save();
+    artist.Rating = parseFloat(average.toFixed(2));
+    await artist.save();
 
     return apiResponse(res, {
       success: true,
-      message: "Event rated successfully",
+      message: "Artist rated successfully",
       data: {
-        averageRating: event.Rating,
-        totalRatings: event.eventRatings.length,
+        averageRating: artist.Rating,
+        totalRatings: artist.allRatings.length,
       },
     });
   } catch (error) {
@@ -70,3 +65,5 @@ exports.rateEvent = async (req, res) => {
     });
   }
 };
+
+
