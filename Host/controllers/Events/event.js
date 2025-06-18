@@ -1,6 +1,7 @@
 const Event = require("../../models/Events/event");
 const EventInvitation = require("../../models/InviteArtist/inviteArtist");
 const { uploadImage, deleteImage } = require("../../../utils/s3Functions");
+const HostProfile = require("../../models/Profile/profile");
 const mongoose = require("mongoose");
 const { apiResponse } = require("../../../utils/apiResponse");
 
@@ -251,6 +252,14 @@ exports.getEventById = async (req, res) => {
       });
     }
 
+    // Fetch the host's profile using hostId from the event
+    const hostProfile = await HostProfile.findOne({ hostId: event.hostId }).select("profileImageUrl");
+    console.log("hostttId",hostProfile)
+
+    // Attach profileImageUrl to the response
+    const eventObj = event.toObject();
+    eventObj.hostProfileImageUrl = hostProfile ? hostProfile.profileImageUrl : null;
+
     const isHost = user.hostId && user.hostId.toString() === event.hostId.toString();
     const isAdmin = user.role === "admin";
     const isApproved = event.status === "approved";
@@ -287,7 +296,7 @@ exports.getEventById = async (req, res) => {
     return apiResponse(res, {
       success: true,
       message: "Event fetched successfully",
-      data: event,
+      data: eventObj,
     });
 
   } catch (error) {
