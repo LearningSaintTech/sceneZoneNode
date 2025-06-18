@@ -242,6 +242,7 @@ exports.getEventById = async (req, res) => {
     }
 
     const event = await Event.findById(eventId).populate("hostId assignedArtists");
+
     if (!event) {
       return apiResponse(res, {
         success: false,
@@ -262,11 +263,33 @@ exports.getEventById = async (req, res) => {
       });
     }
 
+    // --- Update showStatus for each event date ---
+    if (Array.isArray(event.eventDate)) {
+      const today = new Date();
+      const showStatusArray = [];
+
+      for (const date of event.eventDate) {
+        const parsedDate = new Date(date);
+
+        if (!isNaN(parsedDate)) {
+          const status = parsedDate < today ? "recent" : "upcoming";
+          const formattedDate = parsedDate.toISOString().split("T")[0];
+
+          showStatusArray.push({ date: formattedDate, status });
+        }
+      }
+
+      // Save updated showStatus
+      event.showStatus = showStatusArray;
+      await event.save();
+    }
+
     return apiResponse(res, {
       success: true,
       message: "Event fetched successfully",
       data: event,
     });
+
   } catch (error) {
     console.error("Get event by ID error:", error);
     return apiResponse(res, {
@@ -277,6 +300,8 @@ exports.getEventById = async (req, res) => {
     });
   }
 };
+
+
 
 // UPDATE Event
 exports.updateEvent = async (req, res) => {

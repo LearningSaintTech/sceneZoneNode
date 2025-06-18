@@ -97,6 +97,18 @@ const eventSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+ showStatus: {
+  type: [
+    {
+      date: String,
+      status: {
+        type: String,
+        enum: ["recent", "upcoming"],
+      },
+    },
+  ],
+  default: [],
+},
   Discount: {
     level1: {
       type: Number,
