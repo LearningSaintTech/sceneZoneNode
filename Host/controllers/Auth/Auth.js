@@ -181,30 +181,47 @@ exports.verifyOtp = async (req, res) => {
 };
 
 exports.resendOtp = async (req, res) => {
-  const { mobileNumber } = req.body; // Consistent field names
+  const { mobileNumber, email } = req.body;
 
   try {
-    // --- Check if user with this mobileNumber exists ---
-    const user = await Host.findOne({ mobileNumber }); // Consistency in field names
-    if (!user) {
+    let user;
+
+    // Check for valid input
+    if (!mobileNumber && !email) {
       return apiResponse(res, {
         success: false,
-        message: "Host with this phone number does not exist",
-        statusCode: 404,
+        message: "Please provide either a mobile number or an email.",
+        statusCode: 400,
       });
     }
 
-    // --- Delete existing OTPs for this phone ---
-    await Otp.deleteMany({ mobileNumber }); // Consistent field names
+    // Find user by mobileNumber or email
+    if (mobileNumber) {
+      user = await Host.findOne({ mobileNumber });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "Host with this phone number does not exist",
+          statusCode: 404,
+        });
+      }
 
-    // --- Generate and save new OTP ---
+      await Otp.deleteMany({ mobileNumber });
+
+      await Otp.deleteMany({ email });
+    }
+
+    // Generate and save new OTP
     const otpCode = generateOTP();
-    const otp = new Otp({
-      mobileNumber, // Consistent field name
+    const otpData = {
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
-    });
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    };
 
+    if (mobileNumber) otpData.mobileNumber = mobileNumber;
+    else otpData.email = email;
+
+    const otp = new Otp(otpData);
     await otp.save();
 
     return apiResponse(res, {
