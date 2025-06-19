@@ -1,4 +1,5 @@
 const artist = require("../../models/Auth/Auth"); // Correct model name
+const ArtistProfile = require("../../models/Profile/profile")
 const Otp = require("../../models/OTP/OTP");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -160,30 +161,56 @@ exports.verifyOtp = async (req, res) => {
 };
 
 exports.resendOtp = async (req, res) => {
-  const { mobileNumber } = req.body; // Consistent field names
+  const { mobileNumber, email } = req.body;
 
   try {
-    // --- Check if user with this mobileNumber exists ---
-    const user = await artist.findOne({ mobileNumber }); // Consistency in field names
-    if (!user) {
+    let user;
+
+    // Check for valid input
+    if (!mobileNumber && !email) {
       return apiResponse(res, {
         success: false,
-        message: "User with this phone number does not exist",
-        statusCode: 404,
+        message: "Please provide either a mobile number or an email.",
+        statusCode: 400,
       });
     }
 
-    // --- Delete existing OTPs for this phone ---
-    await Otp.deleteMany({ mobileNumber }); // Consistent field names
+    // Find artist by mobileNumber or email
+    if (mobileNumber) {
+      user = await artist.findOne({ mobileNumber });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "Artist with this phone number does not exist",
+          statusCode: 404,
+        });
+      }
+      await Otp.deleteMany({ mobileNumber });
+    } else if (email) {
+      console.log("emaill",email)
+      user = await ArtistProfile.findOne({ email });
+      console.log("artistemaill",user)
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "Artist with this email does not exist",
+          statusCode: 404,
+        });
+      }
+      await Otp.deleteMany({ email });
+    }
 
-    // --- Generate and save new OTP ---
+    // Generate and save new OTP
     const otpCode = generateOTP();
-    const otp = new Otp({
-      mobileNumber, // Consistent field name
+    const otpData = {
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
-    });
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    };
 
+    if (mobileNumber) otpData.mobileNumber = mobileNumber;
+    if (email) otpData.email = email;
+
+    const otp = new Otp(otpData);
     await otp.save();
 
     return apiResponse(res, {

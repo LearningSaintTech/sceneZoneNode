@@ -5,7 +5,7 @@ const { apiResponse } = require("../../../utils/apiResponse");
 exports.guestlistRequest = async (req, res) => {
   const userId = req.user.userId;
   const { eventId } = req.body;
-  console.log("eventID",eventId)
+  console.log("eventID", eventId)
 
   try {
     // 1. Check if the event exists
@@ -21,6 +21,18 @@ exports.guestlistRequest = async (req, res) => {
     // 2. Check if user already requested
     const existingRequest = await GuestList.findOne({ userId, eventId });
     if (existingRequest) {
+      // If already accepted and level assigned, block further requests
+      if (
+        existingRequest.status === "accepted" &&
+        existingRequest.assignedLevel !== null
+      ) {
+        return apiResponse(res, {
+          success: false,
+          message: "You have already been accepted and assigned a level for this event.",
+          statusCode: 400,
+        });
+      }
+      // Otherwise, block duplicate requests
       return apiResponse(res, {
         success: false,
         message: "Request already sent",
@@ -32,11 +44,11 @@ exports.guestlistRequest = async (req, res) => {
     const guestRequest = new GuestList({
       userId,
       eventId,
-      assignedLevel:null,
-      artistId:event.assignedArtists,
+      assignedLevel: null,
+      artistId: event.assignedArtists,
       status: 'pending'
     });
-    console.log("guestreq",guestRequest);
+    console.log("guestreq", guestRequest);
 
     await guestRequest.save();
 
@@ -60,10 +72,10 @@ exports.guestlistRequest = async (req, res) => {
 // Get all guest list requests for the logged-in artist
 exports.getGuestListForArtist = async (req, res) => {
   try {
-    const artistId = req.user.artistId; 
+    const artistId = req.user.artistId;
 
     const guestLists = await GuestList.find({ artistId })
-       .select("status assignedLevel userId") // Only select these fields
+      .select("status assignedLevel userId") // Only select these fields
       .populate("userId");;
 
     if (!guestLists || guestLists.length === 0) {

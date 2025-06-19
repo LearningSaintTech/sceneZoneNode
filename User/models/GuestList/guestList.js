@@ -12,10 +12,10 @@ const guestlistSchema = new mongoose.Schema({
         ref: "Event",
         required: true
     },
-    artistId:{
+    artistId: [{
         type: mongoose.Schema.Types.ObjectId,
-        required:true
-    },
+        ref: 'Artist',
+    }],
     status: {
         type: String,
         enum: ['pending', 'accepted', 'rejected'],

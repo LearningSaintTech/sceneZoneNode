@@ -1,4 +1,5 @@
 const User = require("../../models/Auth/Auth"); // Correct model name
+const UserProfile = require("../../models/Profile/UserProfile")
 const Otp = require("../../models/OTP/OTP");
 const jwt = require("jsonwebtoken");
 const HostAuth = require("../../../Host/models/Auth/Auth");
@@ -151,30 +152,54 @@ exports.verifyOtp = async (req, res) => {
 };
 
 exports.resendOtp = async (req, res) => {
-  const { mobileNumber } = req.body; // Consistent field names
+  const { mobileNumber, email } = req.body;
 
   try {
-    // --- Check if user with this mobileNumber exists ---
-    const user = await User.findOne({ mobileNumber }); // Consistency in field names
-    if (!user) {
+    let user;
+
+    // Check for valid input
+    if (!mobileNumber && !email) {
       return apiResponse(res, {
         success: false,
-        message: "User with this phone number does not exist",
-        statusCode: 404,
+        message: "Please provide either a mobile number or an email.",
+        statusCode: 400,
       });
     }
 
-    // --- Delete existing OTPs for this phone ---
-    await Otp.deleteMany({ mobileNumber }); // Consistent field names
+    // Find user by mobileNumber or email
+    if (mobileNumber) {
+      user = await User.findOne({ mobileNumber });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "User with this phone number does not exist",
+          statusCode: 404,
+        });
+      }
+      await Otp.deleteMany({ mobileNumber });
+    } else if (email) {
+      user = await UserProfile.findOne({ email });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "User with this email does not exist",
+          statusCode: 404,
+        });
+      }
+      await Otp.deleteMany({ email });
+    }
 
-    // --- Generate and save new OTP ---
+    // Generate and save new OTP
     const otpCode = generateOTP();
-    const otp = new Otp({
-      mobileNumber, // Consistent field name
+    const otpData = {
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
-    });
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    };
 
+    if (mobileNumber) otpData.mobileNumber = mobileNumber;
+    if (email) otpData.email = email;
+
+    const otp = new Otp(otpData);
     await otp.save();
 
     return apiResponse(res, {
@@ -186,11 +211,11 @@ exports.resendOtp = async (req, res) => {
     return apiResponse(res, {
       success: false,
       message: "Resending OTP failed",
-      error: error.message,
+      data: { error: error.message },
       statusCode: 500,
     });
   }
-};
+}
 
 exports.login = async (req, res) => {
   const { mobileNumber } = req.body;

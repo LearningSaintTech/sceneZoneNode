@@ -184,7 +184,7 @@ exports.resendOtp = async (req, res) => {
   const { mobileNumber, email } = req.body;
 
   try {
-    let user;
+    let host;
 
     // Check for valid input
     if (!mobileNumber && !email) {
@@ -195,19 +195,26 @@ exports.resendOtp = async (req, res) => {
       });
     }
 
-    // Find user by mobileNumber or email
+    // Find host by mobileNumber or email
     if (mobileNumber) {
-      user = await Host.findOne({ mobileNumber });
-      if (!user) {
+      host = await Host.findOne({ mobileNumber });
+      if (!host) {
         return apiResponse(res, {
           success: false,
           message: "Host with this phone number does not exist",
           statusCode: 404,
         });
       }
-
       await Otp.deleteMany({ mobileNumber });
-
+    } else if (email) {
+      host = await HostProfile.findOne({ email });
+      if (!host) {
+        return apiResponse(res, {
+          success: false,
+          message: "Host with this email does not exist",
+          statusCode: 404,
+        });
+      }
       await Otp.deleteMany({ email });
     }
 
@@ -219,7 +226,7 @@ exports.resendOtp = async (req, res) => {
     };
 
     if (mobileNumber) otpData.mobileNumber = mobileNumber;
-    else otpData.email = email;
+    if (email) otpData.email = email;
 
     const otp = new Otp(otpData);
     await otp.save();
@@ -236,8 +243,9 @@ exports.resendOtp = async (req, res) => {
       data: { error: error.message },
       statusCode: 500,
     });
+
   }
-};
+}
 
 exports.login = async (req, res) => {
   const { mobileNumber } = req.body;

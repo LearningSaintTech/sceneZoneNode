@@ -142,27 +142,54 @@ exports.verifyOtp = async (req, res) => {
 
 // Resend OTP
 exports.resendOtp = async (req, res) => {
-  const { mobileNumber } = req.body;
+  const { mobileNumber, email } = req.body;
 
   try {
-    const admin = await Admin.findOne({ mobileNumber });
-    if (!admin) {
+    let admin;
+
+    // Check for valid input
+    if (!mobileNumber && !email) {
       return apiResponse(res, {
         success: false,
-        message: "Admin not found",
-        statusCode: 404,
+        message: "Please provide either a mobile number or an email.",
+        statusCode: 400,
       });
     }
 
-    await Otp.deleteMany({ mobileNumber });
+    // Find admin by mobileNumber or email
+    if (mobileNumber) {
+      admin = await Admin.findOne({ mobileNumber });
+      if (!admin) {
+        return apiResponse(res, {
+          success: false,
+          message: "Admin with this phone number does not exist",
+          statusCode: 404,
+        });
+      }
+      await Otp.deleteMany({ mobileNumber });
+    } else if (email) {
+      admin = await AdminProfile.findOne({ email });
+      if (!admin) {
+        return apiResponse(res, {
+          success: false,
+          message: "Admin with this email does not exist",
+          statusCode: 404,
+        });
+      }
+      await Otp.deleteMany({ email });
+    }
 
+    // Generate and save new OTP
     const otpCode = generateOTP();
-    const otp = new Otp({
-      mobileNumber,
+    const otpData = {
       code: otpCode,
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-    });
+    };
 
+    if (mobileNumber) otpData.mobileNumber = mobileNumber;
+    if (email) otpData.email = email;
+
+    const otp = new Otp(otpData);
     await otp.save();
 
     return apiResponse(res, {
@@ -170,14 +197,16 @@ exports.resendOtp = async (req, res) => {
       data: { otp: otpCode },
     });
   } catch (error) {
+    console.error("Error resending OTP:", error);
     return apiResponse(res, {
       success: false,
-      message: "Resend OTP failed",
+      message: "Resending OTP failed",
       data: { error: error.message },
       statusCode: 500,
     });
+
   }
-};
+}
 
 // Login with OTP
 exports.login = async (req, res) => {
