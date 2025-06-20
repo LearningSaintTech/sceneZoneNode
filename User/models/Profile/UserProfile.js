@@ -36,6 +36,9 @@ const userProfileSchema = new mongoose.Schema({
   profileImageUrl:{
     type: String,
   },
+  dob: {
+    type: Date,
+  },
   // isProfile: {
   //   type: Boolean,
   //   default: false,

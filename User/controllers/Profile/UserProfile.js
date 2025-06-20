@@ -6,7 +6,7 @@ const { apiResponse } = require("../../../utils/apiResponse");
 exports.createUserProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { email, address } = req.body;
+    const { email, address, dob } = req.body; // <-- add dob here
 
     // Find the user in the UserAuthentication model
     const user = await UserAuthentication.findById(userId);
@@ -60,6 +60,7 @@ exports.createUserProfile = async (req, res) => {
       mobileNumber: user.mobileNumber,
       email: email,
       address: address,
+      dob: dob, // <-- add dob here
       profileImageUrl,
       // isProfile: true,
     });
@@ -133,10 +134,7 @@ exports.deleteUserProfile = async (req, res) => {
 exports.updateUserProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
-    console.log(" User ID from token:", userId);
-
-    const { email, address, fullName } = req.body || {};
-    console.log(" Request body data:", { email, address });
+    const { email, address, fullName, dob } = req.body || {}; // <-- add dob here
 
     // Find the user profile
     const profile = await UserProfile.findOne({ userId });
@@ -153,6 +151,7 @@ exports.updateUserProfile = async (req, res) => {
     if (email) profile.email = email;
     if (address) profile.address = address;
     if (fullName) profile.fullName = fullName;
+    if (dob) profile.dob = dob; // <-- add dob update
 
     // Handle profile image update (optional)
     if (req.file) {

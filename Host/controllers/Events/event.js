@@ -263,8 +263,9 @@ exports.getEventById = async (req, res) => {
     const isHost = user.hostId && user.hostId.toString() === event.hostId.toString();
     const isAdmin = user.role === "admin";
     const isApproved = event.status === "approved";
+    const isUser = !!user.userId
 
-    if (!isAdmin && !isHost && !isApproved) {
+    if (!isAdmin && !isHost && isUser&& !isApproved) {
       return apiResponse(res, {
         success: false,
         message: "Access denied. Event not approved yet.",

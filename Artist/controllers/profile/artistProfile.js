@@ -8,12 +8,24 @@ const { apiResponse } = require("../../../utils/apiResponse")
 const ArtistProfile = require("../../models/Profile/profile");
 const ArtistAuthentication = require("../../models/Auth/Auth");
 
+
 exports.createArtistProfile = async (req, res) => {
   try {
     const artistId = req.user.artistId;
 
-    // Add location to destructuring
-    const { dob, email, address, genre, instrument, budget, location } = req.body;
+    const {
+      dob,
+      email,
+      address,
+      genre,
+      instrument,
+      budget,
+      location,
+      ArtistType,
+      Musician,
+      venueNames // can be string or array
+    } = req.body;
+
     const artist = await ArtistAuthentication.findById(artistId);
     if (!artist) {
       return apiResponse(res, {
@@ -22,6 +34,7 @@ exports.createArtistProfile = async (req, res) => {
         statusCode: 404,
       });
     }
+
     if (!artist.isVerified) {
       return apiResponse(res, {
         success: false,
@@ -39,7 +52,6 @@ exports.createArtistProfile = async (req, res) => {
       });
     }
 
-    // Check if a profile with the same email already exists
     const emailExists = await ArtistProfile.findOne({ email });
     if (emailExists) {
       return apiResponse(res, {
@@ -49,69 +61,60 @@ exports.createArtistProfile = async (req, res) => {
       });
     }
 
-    // Profile image upload
+    // Handle profile image
     let profileImageUrl = null;
     if (req.files?.profileImageUrl?.[0]) {
-      const fileName = `Artist/profileImage/Artist/artist_${artistId}_${Date.now()}-${req.files.profileImageUrl[0].originalname
-        }`;
-      profileImageUrl = await uploadImage(
-        req.files.profileImageUrl[0],
-        fileName
-      );
-      console.log("Profile image uploaded, URL:", profileImageUrl);
+      const fileName = `Artist/profileImage/artist_${artistId}_${Date.now()}-${req.files.profileImageUrl[0].originalname}`;
+      profileImageUrl = await uploadImage(req.files.profileImageUrl[0], fileName);
     } else {
-      console.log("No profile image provided.");
+      return apiResponse(res, {
+        success: false,
+        message: "Profile image is required.",
+        statusCode: 400,
+      });
     }
 
-    // Performance videos upload validation
+    // Handle venueNames conversion
+    let venueArray = [];
+    if (Array.isArray(venueNames)) {
+      venueArray = venueNames;
+    } else if (typeof venueNames === "string") {
+      venueArray = venueNames.split(",").map((v) => v.trim()).filter(Boolean);
+    }
+
+    // Handle performance videos
     let performanceUrls = [];
-    if (req.files?.performanceUrl) {
-      const performanceFiles = req.files.performanceUrl;
+    const performanceFiles = req.files?.performanceUrl || [];
 
-      // Check if the number of uploaded videos exceeds the limit
-      if (performanceFiles.length > 5) {
-        return apiResponse(res, {
-          success: false,
-          message: "Maximum 5 performance videos are allowed.",
-          statusCode: 400,
-        });
-      }
-
-      // Check if no videos are uploaded
-      if (performanceFiles.length === 0) {
-        return apiResponse(res, {
-          success: false,
-          message: "At least one performance video is required.",
-          statusCode: 400,
-        });
-      }
-
-      // Check for duplicate videos in the uploaded files
-      const fileNames = performanceFiles.map((file) => file.originalname);
-      const duplicateFiles = fileNames.filter(
-        (file, index) => fileNames.indexOf(file) !== index
-      );
-      if (duplicateFiles.length > 0) {
-        return apiResponse(res, {
-          success: false,
-          message: "Duplicates videos are not allowed",
-          statusCode: 400,
-        });
-      }
-
-      // Generate file names and upload videos
-      const fileUrls = performanceFiles.map(
-        (file) =>
-          `Artist/performance/artist_${artistId}_${Date.now()}-${file.originalname
-          }`
-      );
-      performanceUrls = await uploadMultipleImages(performanceFiles, fileUrls);
-      console.log("Performance videos uploaded, URLs:", performanceUrls);
-    } else {
+    if (performanceFiles.length === 0) {
       return apiResponse(res, {
         success: false,
         message: "At least one performance video is required.",
         statusCode: 400,
+      });
+    }
+
+    // Validation: Either 1 venueName for all, or equal number
+    if (
+      venueArray.length !== 1 &&
+      venueArray.length !== performanceFiles.length
+    ) {
+      return apiResponse(res, {
+        success: false,
+        message:
+          "Number of venue names must match number of performance videos or provide one venue for all.",
+        statusCode: 400,
+      });
+    }
+
+    for (let i = 0; i < performanceFiles.length; i++) {
+      const file = performanceFiles[i];
+      const fileName = `Artist/performance/artist_${artistId}_${Date.now()}-${file.originalname}`;
+      const videoUrl = await uploadImage(file, fileName);
+
+      performanceUrls.push({
+        venueName: venueArray.length === 1 ? venueArray[0] : venueArray[i],
+        videoUrl,
       });
     }
 
@@ -122,27 +125,29 @@ exports.createArtistProfile = async (req, res) => {
       dob,
       email,
       address,
-      genre,
+      genre: Array.isArray(genre) ? genre : [genre],
       instrument,
       budget,
-      location, // <-- add location here
+      location,
       profileImageUrl,
       performanceUrl: performanceUrls,
-      // isProfile: true,
+      ArtistType,
+      isMusician: ArtistType === "Musician",
+      Musician,
     });
-
 
     await newProfile.save();
     artist.isProfileComplete = true;
     await artist.save();
 
     return apiResponse(res, {
+      success: true,
       message: "Artist profile created successfully",
       data: newProfile,
       statusCode: 201,
     });
   } catch (error) {
-    console.error(" Error inside createArtistProfile:", error);
+    console.error("Error inside createArtistProfile:", error);
     return apiResponse(res, {
       success: false,
       message: "Server error",
@@ -151,6 +156,7 @@ exports.createArtistProfile = async (req, res) => {
     });
   }
 };
+
 
 exports.getArtistProfile = async (req, res) => {
   try {
@@ -327,6 +333,7 @@ exports.updateArtistProfile = async (req, res) => {
 exports.getAllArtists = async (req, res) => {
   try {
     const role = req.user.role;
+    console.log("roleee",role)
     let artists;
 
     if (role === "admin") {
@@ -361,6 +368,8 @@ exports.getAllArtists = async (req, res) => {
     });
   }
 };
+
+
 
 
 exports.deleteArtistProfile = async (req, res) => {
@@ -422,3 +431,46 @@ exports.deleteArtistProfile = async (req, res) => {
     });
   }
 };
+
+
+
+exports.getArtistPerformance = async (req, res) => {
+  try {
+    const { artistId } = req.body; // Artist ID is passed in the request body
+
+    // Find the artist profile
+    const profile = await ArtistProfile.findOne({ artistId });
+    console.log("AritstId",profile)
+
+    if (!profile) {
+      return apiResponse(res, {
+        success: false,
+        message: "Artist profile not found",
+        statusCode: 404,
+      });
+    }
+
+    // Prepare performance data with venueName, videoUrl, avgRating, and genre
+    const performances = (profile.performanceUrl || []).map(perf => ({
+      venueName: perf.venueName,
+      videoUrl: perf.videoUrl,
+      avgRating: perf.avgRating || 0,
+      genre: profile.genre // genre is at profile level
+    }));
+
+    return apiResponse(res, {
+      success: true,
+      message: "Artist performances fetched successfully",
+      data: performances,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Error in getArtistPerformance:", error.message);
+    return apiResponse(res, {
+      success: false,
+      message: "Server error",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+}

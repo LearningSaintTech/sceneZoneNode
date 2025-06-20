@@ -35,6 +35,7 @@ const AppUsers = require("./Admin/Routes/allUsers");
 const AdminForgotPassword = require("./Admin/Routes/forgotPassword");
 const RateArtist = require("./Host/Routes/Rating");
 const RateEvent = require("./Artist/Routes/Rating");
+const ticket = require("./User/Routes/buyTickets");
 const app = express();
 const PORT = process.env.PORT;
 
@@ -48,7 +49,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/user/auth", userAuthentication);
-app.use("/api/user", userProfile, userFavouriteEvent, UserForgotPassword,userPaymentDetails,guestRequest,RateEvent); 
+app.use("/api/user", userProfile, userFavouriteEvent, UserForgotPassword,userPaymentDetails,guestRequest,RateEvent,ticket); 
 app.use("/api/host/auth", hostAuthentication);
 app.use(
   "/api/host",

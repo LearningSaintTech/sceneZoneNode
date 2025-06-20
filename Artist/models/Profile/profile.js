@@ -28,22 +28,63 @@ const artistProfileSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  location:{
-    type:String,
-    required:true,
-  },
-  genre: {
+  location: {
     type: String,
+    enum:[],
     required: true,
   },
+ genre: {
+  type: [String],
+  required: true,
+},
+  ArtistType: {
+    type: String,
+    enum: [
+      "Musician",
+      "Rockstar",
+      "Jazz Virtuoso",
+      "Hip Hop Artist",
+      "Classical Maestro",
+      "Reggae Performer",
+      "Synthwave Artist",
+      "Blues Singer",
+      "Country Artist",
+      "Pop Sensation",
+      "Metal Guitarist"
+    ],
+    required: true
+  },
+  isMusician: {
+    type: Boolean,
+    default: false
+  },
+
+  Musician: {
+    type: String,
+    enum: [
+      "Solo",
+      "Duo",
+      "Trio",
+      "Quartet"
+    ],
+    required:true
+  },
+
+   performanceUrl: [
+    {
+      venueName: { type: String, required: true },
+      videoUrl: { type: String, required: true }
+    }
+  ],
+
   instrument: {
     type: String,
     required: true,
   },
-  budget:{
+  budget: {
     type: Number,
     required: true,
-    default:null
+    default: null
   },
   email: {
     type: String,
@@ -57,12 +98,6 @@ const artistProfileSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  performanceUrl: [
-    {
-      type: String,
-      required: true,
-    },
-  ],
   isShortlisted: {
     type: Boolean,
     default: false,
@@ -82,7 +117,7 @@ const artistProfileSchema = new mongoose.Schema({
       {
         hostId: {
           type: mongoose.Schema.Types.ObjectId,
-          ref:"HostAuthentication"
+          ref: "HostAuthentication"
         },
         rating: {
           type: Number,

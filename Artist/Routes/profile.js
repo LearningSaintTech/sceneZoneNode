@@ -7,7 +7,8 @@ const {
   deleteArtistProfile,
   getArtistProfile,
   updateArtistProfile,
-  getAllArtists
+  getAllArtists,
+  getArtistPerformance
 } = require("../controllers/profile/artistProfile");
 
 const { authMiddleware } = require("../../middlewares/authMiddleware");
@@ -86,4 +87,5 @@ router.delete(
   deleteArtistProfile
 );
 
+router.get("/get-Artist-Performance",authMiddleware(['host']),getArtistPerformance)
 module.exports = router;

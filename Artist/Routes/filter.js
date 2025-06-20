@@ -5,6 +5,6 @@ const {
   getFilteredEvents,
 } = require("../controllers/Filter/filter");
 
-router.get("/filter-events", authMiddleware(["artist"]), getFilteredEvents);
+router.get("/filter-events", authMiddleware(["artist","user","admin"]), getFilteredEvents);
 
 module.exports = router;
