@@ -204,6 +204,25 @@ exports.updateArtistProfile = async (req, res) => {
   try {
     const artistId = req.user.artistId;
 
+    // Find existing artist and verify
+    const artist = await ArtistAuthentication.findById(artistId);
+    if (!artist) {
+      return apiResponse(res, {
+        success: false,
+        message: "Artist not found",
+        statusCode: 404,
+      });
+    }
+
+    if (!artist.isVerified) {
+      return apiResponse(res, {
+        success: false,
+        message: "Artist not verified",
+        statusCode: 400,
+      });
+    }
+
+    // Find existing profile
     const profile = await ArtistProfile.findOne({ artistId });
     if (!profile) {
       return apiResponse(res, {
@@ -220,104 +239,237 @@ exports.updateArtistProfile = async (req, res) => {
       genre,
       instrument,
       budget,
-      videoToDelete,
-      videoToReplace,
-      location // <-- add location here
+      location,
+      ArtistType,
+      Musician,
+      newPerformances, // Array of { venueName, videoUrl } for adding new videos
+      replacePerformance, // Object { identifier, venueName, videoUrl } for replacement
+      deletePerformance, // Object { identifier } for deletion
     } = req.body;
 
-    if (dob) profile.dob = dob;
-    if (email) profile.email = email;
+    // Validate email format and uniqueness if provided and changed
+    if (email && email !== profile.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return apiResponse(res, {
+          success: false,
+          message: "Invalid email format",
+          statusCode: 400,
+        });
+      }
+      const emailExists = await ArtistProfile.findOne({ email });
+      if (emailExists) {
+        return apiResponse(res, {
+          success: false,
+          message: "Email already exists. Please use another email.",
+          statusCode: 400,
+        });
+      }
+      profile.email = email;
+    }
+
+    // Validate and update fields if provided
+    if (dob) {
+      if (isNaN(new Date(dob).getTime())) {
+        return apiResponse(res, {
+          success: false,
+          message: "Invalid date of birth",
+          statusCode: 400,
+        });
+      }
+      profile.dob = dob;
+    }
     if (address) profile.address = address;
-    if (genre) profile.genre = genre;
+    if (genre) profile.genre = Array.isArray(genre) ? genre : [genre];
     if (instrument) profile.instrument = instrument;
     if (budget) profile.budget = budget;
-    if (location) profile.location = location; // <-- add location update
+    if (location) profile.location = location;
+    if (ArtistType) {
+      profile.ArtistType = ArtistType;
+      profile.isMusician = ArtistType === "Musician";
+    }
+    if (Musician) profile.Musician = Musician;
 
-    // Profile Image Update
+    // Check if any fields were updated
+    const fieldsUpdated = dob || email || address || genre || instrument || budget || location || ArtistType || Musician;
+
+    // Handle profile image update
     if (req.files?.profileImageUrl?.[0]) {
-      const fileName = `Artist/profileImage/artist_${artistId}_${Date.now()}_${req.files.profileImageUrl[0].originalname
-        }`;
-      const newUrl = await uploadImage(req.files.profileImageUrl[0], fileName);
+      const fileName = `Artist/profileImage/artist_${artistId}_${Date.now()}-${req.files.profileImageUrl[0].originalname}`;
+      try {
+        const newUrl = await uploadImage(req.files.profileImageUrl[0], fileName);
+        if (profile.profileImageUrl) {
+          try {
+            const oldFile = profile.profileImageUrl.split(".com/")[1];
+            await deleteImage(oldFile);
+          } catch (err) {
+            console.warn("Failed to delete old profile image:", err.message);
+          }
+        }
+        profile.profileImageUrl = newUrl;
+      } catch (err) {
+        return apiResponse(res, {
+          success: false,
+          message: "Failed to upload profile image",
+          statusCode: 500,
+        });
+      }
+    }
 
-      if (profile.profileImageUrl) {
-        try {
-          const oldFile = profile.profileImageUrl.split(".com/")[1];
-          await deleteImage(oldFile);
-        } catch (err) {
-          console.warn("Failed to delete old profile image:", err.message);
+    // Handle performance videos
+    let performanceUrls = profile.performanceUrl || [];
+    const performanceFiles = req.files?.performanceUrl || [];
+
+    // Add new performance videos
+    if (newPerformances && Array.isArray(newPerformances)) {
+      for (const perf of newPerformances) {
+        if (!perf.venueName || perf.venueName.trim() === "") {
+          return apiResponse(res, {
+            success: false,
+            message: "Venue name cannot be empty",
+            statusCode: 400,
+          });
         }
       }
 
-      profile.profileImageUrl = newUrl;
+      for (let i = 0; i < performanceFiles.length; i++) {
+        const file = performanceFiles[i];
+        const venueName = newPerformances[i]?.venueName || newPerformances[0]?.venueName;
+        if (!venueName) {
+          return apiResponse(res, {
+            success: false,
+            message: "Venue name required for new performance video",
+            statusCode: 400,
+          });
+        }
+        const fileName = `Artist/performance/artist_${artistId}_${Date.now()}-${file.originalname}`;
+        try {
+          const videoUrl = await uploadImage(file, fileName);
+          performanceUrls.push({
+            venueName,
+            videoUrl,
+            _id: new mongoose.Types.ObjectId(),
+          });
+        } catch (err) {
+          console.error(`Failed to upload performance video ${file.originalname}:`, err.message);
+          return apiResponse(res, {
+            success: false,
+            message: `Failed to upload performance video: ${file.originalname}`,
+            statusCode: 500,
+          });
+        }
+      }
     }
 
-    // Handle replacing a specific performance video
-    if (videoToReplace && req.files?.performanceUrl?.[0]) {
-      const indexToReplace = profile.performanceUrl.indexOf(videoToReplace);
+    // Replace performance video by venueName or _id
+    if (replacePerformance && replacePerformance.identifier) {
+      const indexToReplace = performanceUrls.findIndex(
+        (entry) =>
+          entry._id.toString() === replacePerformance.identifier ||
+          entry.venueName === replacePerformance.identifier
+      );
       if (indexToReplace === -1) {
         return apiResponse(res, {
           success: false,
-          message: "Video to replace does not exist in profile.",
+          message: "Performance video to replace not found",
           statusCode: 400,
         });
       }
 
-      // Generate new video name
-      const file = req.files.performanceUrl[0];
-      const fileName = `Artist/performance/artist_${artistId}_${Date.now()}_${file.originalname
-        }`;
-      const newVideoUrl = await uploadImage(file, fileName);
+      if (req.files?.performanceUrl?.[0]) {
+        const file = req.files.performanceUrl[0];
+        const fileName = `Artist/performance/artist_${artistId}_${Date.now()}-${file.originalname}`;
+        try {
+          const newVideoUrl = await uploadImage(file, fileName);
+          try {
+            const oldFileName = performanceUrls[indexToReplace].videoUrl.split(".com/")[1];
+            await deleteImage(oldFileName);
+          } catch (error) {
+            console.warn(
+              `Failed to delete old performance video ${performanceUrls[indexToReplace].videoUrl}:`,
+              error.message
+            );
+          }
 
-      // Check if the new video URL already exists in the profile
-      if (profile.performanceUrl.includes(newVideoUrl)) {
-        return apiResponse(res, {
-          success: false,
-          message: "This video already exists in the profile.",
-          statusCode: 400,
-        });
+          performanceUrls[indexToReplace] = {
+            venueName: replacePerformance.venueName || performanceUrls[indexToReplace].venueName,
+            videoUrl: newVideoUrl,
+            _id: performanceUrls[indexToReplace]._id,
+          };
+        } catch (err) {
+          return apiResponse(res, {
+            success: false,
+            message: "Failed to upload replacement video",
+            statusCode: 500,
+          });
+        }
+      } else if (replacePerformance.venueName) {
+        // Update venueName only
+        performanceUrls[indexToReplace].venueName = replacePerformance.venueName;
       }
-
-      // Delete the old video
-      try {
-        const oldFileName = videoToReplace.split(".com/")[1];
-        await deleteImage(oldFileName);
-      } catch (error) {
-        console.warn(
-          `Failed to delete old performance video ${videoToReplace}:`,
-          error.message
-        );
-      }
-
-      // Replace the video
-      profile.performanceUrl[indexToReplace] = newVideoUrl;
-      console.log("Replaced video:", videoToReplace, ",", newVideoUrl);
     }
 
-    // Delete Performance Video
-    if (videoToDelete) {
-      const index = profile.performanceUrl.indexOf(videoToDelete);
-      if (index === -1) {
+    // Delete performance video by venueName or _id
+    if (deletePerformance && deletePerformance.identifier) {
+      const indexToDelete = performanceUrls.findIndex(
+        (entry) =>
+          entry._id.toString() === deletePerformance.identifier ||
+          entry.venueName === deletePerformance.identifier
+      );
+      if (indexToDelete === -1) {
         return apiResponse(res, {
           success: false,
-          message: "Video to delete does not exist in profile.",
+          message: "Performance video to delete not found",
           statusCode: 400,
         });
       }
 
       try {
-        const fileName = videoToDelete.split(".com/")[1];
+        const fileName = performanceUrls[indexToDelete].videoUrl.split(".com/")[1];
         await deleteImage(fileName);
       } catch (err) {
         console.warn("Failed to delete video:", err.message);
       }
 
-      profile.performanceUrl.splice(index, 1);
+      performanceUrls.splice(indexToDelete, 1);
     }
 
+    // Ensure at least one performance video remains if required
+    if (performanceUrls.length === 0 && (deletePerformance || performanceFiles.length === 0)) {
+      return apiResponse(res, {
+        success: false,
+        message: "At least one performance video is required.",
+        statusCode: 400,
+      });
+    }
+
+    // Update performanceUrl in profile
+    profile.performanceUrl = performanceUrls;
+
+    // Check if any update was made
+    if (
+      !fieldsUpdated &&
+      !req.files?.profileImageUrl &&
+      !newPerformances &&
+      !replacePerformance &&
+      !deletePerformance &&
+      performanceFiles.length === 0
+    ) {
+      return apiResponse(res, {
+        success: false,
+        message: "No updates provided",
+        statusCode: 400,
+      });
+    }
+
+    // Save updated profile
     await profile.save();
+
     return apiResponse(res, {
+      success: true,
       message: "Profile updated successfully",
       data: profile,
+      statusCode: 200,
     });
   } catch (error) {
     console.error("Error in updateArtistProfile:", error.message);
@@ -340,9 +492,11 @@ exports.getAllArtists = async (req, res) => {
       artists = await ArtistProfile.find();
     } else {
       artists = await ArtistProfile.find({ status: "approved" }).select(
-        "genre budget"
+        "genre budget profileImageUrl artistId"
       );
     }
+
+    console.log("arttt",artists)
 
     if (!artists || artists.length === 0) {
       return apiResponse(res, {
