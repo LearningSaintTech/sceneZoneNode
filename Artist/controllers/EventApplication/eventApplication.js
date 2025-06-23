@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const EventApplication = require("../../../Artist/models/EventApplication/eventApplication");
 const Event = require("../../../Host/models/Events/event"); // Import the Event model
 const { apiResponse } = require("../../../utils/apiResponse");
-
 exports.applyForEvent = async (req, res) => {
   try {
     const { eventId } = req.body;
@@ -30,11 +29,11 @@ exports.applyForEvent = async (req, res) => {
     }
 
     // Check for existing application
-    const existing = await EventApplication.findOne({ eventId, artistId });
+    const existing = await EventApplication.findOne({ eventId: eventId, artistId });
     if (existing) {
       return apiResponse(res, {
         success: false,
-        message: "Already applied for this event.",
+        message: "Application exists",
         statusCode: 400,
       });
     }
@@ -50,10 +49,13 @@ exports.applyForEvent = async (req, res) => {
       { new: true }
     );
 
+    // Populate eventId in the application
+    const populatedApplication = await EventApplication.findById(application._id).populate("eventId");
+
     return apiResponse(res, {
       message: "Application submitted and artist assigned.",
       statusCode: 201,
-      data: application,
+      data: populatedApplication,
     });
   } catch (err) {
     console.error("Apply error:", err);
