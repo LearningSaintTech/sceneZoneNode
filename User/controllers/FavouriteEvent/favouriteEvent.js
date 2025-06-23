@@ -71,3 +71,44 @@ exports.getFavouriteEvents = async (req, res) => {
     });
   }
 };
+
+
+
+// DELETE: Remove a favorite event
+exports.removeFavouriteEvent = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { eventId } = req.params;
+
+    if (!eventId) {
+      return apiResponse(res, {
+        success: false,
+        message: "Event ID is required",
+        statusCode: 400,
+      });
+    }
+
+    // Find and delete the favorite event
+    const favourite = await FavouriteEvents.findOneAndDelete({ userId, eventId });
+    if (!favourite) {
+      return apiResponse(res, {
+        success: false,
+        message: "Favorite event not found",
+        statusCode: 200,
+      });
+    }
+
+    return apiResponse(res, {
+      message: "Event removed from favorites",
+      statusCode: 200,
+    });
+  } catch (err) {
+    console.error("Remove favourite error:", err);
+    return apiResponse(res, {
+      success: false,
+      message: "Server error",
+      data: { error: err.message },
+      statusCode: 500,
+    });
+  }
+};
