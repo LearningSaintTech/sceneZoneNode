@@ -18,7 +18,7 @@ router.post(
   createEvent
 );
 
-router.get("/get-all-events", authMiddleware(["host","artist","user"]), getAllEvents);
+router.get("/get-all-events",  getAllEvents);
 
 router.get(
   "/get-event/:id",

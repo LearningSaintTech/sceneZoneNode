@@ -201,18 +201,7 @@ exports.createEvent = async (req, res) => {
 // GET All Events
 exports.getAllEvents = async (req, res) => {
   try {
-    const user = req.user;
-    console.log("user ",user);
-    let events;
-
-    if (user.role === "admin") {
-      events = await Event.find().populate("hostId assignedArtists");
-    } else if (user.hostId) {
-      events = await Event.find({ hostId: user.hostId }).populate("assignedArtists");
-    } else {
-      events = await Event.find({ status: "approved" }).populate("assignedArtists");
-    }
-
+     const events = await Event.find().populate("hostId assignedArtists");
     return apiResponse(res, {
       success: true,
       message: "Events fetched successfully",
