@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const EventApplication = require("../../../Artist/models/EventApplication/eventApplication");
 const Event = require("../../../Host/models/Events/event"); // Import the Event model
 const { apiResponse } = require("../../../utils/apiResponse");
+
+
 exports.applyForEvent = async (req, res) => {
   try {
     const { eventId } = req.body;

@@ -590,7 +590,7 @@ exports.deleteArtistProfile = async (req, res) => {
 
 exports.getArtistPerformance = async (req, res) => {
   try {
-    const { artistId } = req.body; // Artist ID is passed in the request body
+    const { artistId } = req.params; // Artist ID is passed in the request body
 
     // Find the artist profile
     const profile = await ArtistProfile.findOne({ artistId });

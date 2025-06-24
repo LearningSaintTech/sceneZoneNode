@@ -202,6 +202,7 @@ exports.createEvent = async (req, res) => {
 exports.getAllEvents = async (req, res) => {
   try {
     const user = req.user;
+    console.log("user ",user);
     let events;
 
     if (user.role === "admin") {

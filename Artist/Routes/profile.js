@@ -87,5 +87,5 @@ router.delete(
   deleteArtistProfile
 );
 
-router.get("/get-Artist-Performance",authMiddleware(['host']),getArtistPerformance)
+router.get("/get-Artist-Performance/:artistId",authMiddleware(['host']),getArtistPerformance)
 module.exports = router;
