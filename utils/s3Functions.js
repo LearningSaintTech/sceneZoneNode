@@ -106,22 +106,26 @@ exports.uploadImage = async (file, fileName) => {
   }
 };
 
-// Delete Image
-exports.deleteImage = async (fileName) => {
-  try {
-    if (!fileName) {
-      throw new Error("No file name provided");
-    }
-    await s3.send(
-      new DeleteObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET_NAME,
-        Key: fileName,
-      })
-    );
-  } catch (error) {
-    throw new Error(error.message);
-  }
-};
+// // Delete Image
+// exports.deleteImage = async (fileName) => {
+//   try {
+//     if (!fileName) {
+//       throw new Error("No file name provided");
+//     }
+//     await s3.send(
+//       new DeleteObjectCommand({
+//         Bucket: process.env.AWS_S3_BUCKET_NAME,
+//         Key: fileName,
+//       })
+//     );
+//   } catch (error) {
+//     throw new Error(error.message);
+//   }
+// };
+
+
+
+
 
 // Upload Multiple Images
 exports.uploadMultipleImages = async (files, fileNames) => {
@@ -156,5 +160,25 @@ exports.uploadMultipleImages = async (files, fileNames) => {
   } catch (error) {
     console.error("S3 Upload Multiple Error:", error.message);
     throw new Error(error.message);
+  }
+};
+
+
+
+exports.deleteFromS3 = async (fileUrl) => {
+  try {
+    const urlParts = new URL(fileUrl);
+    const key = urlParts.pathname.substring(1);
+
+    const deleteCommand = new DeleteObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: key,
+    });
+
+    await s3.send(deleteCommand);
+    console.log("File deleted from S3:", fileUrl);
+  } catch (error) {
+    console.error("Error deleting file from S3:", error);
+    throw new Error("S3 delete failed");
   }
 };

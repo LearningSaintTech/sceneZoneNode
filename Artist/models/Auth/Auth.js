@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const artistAuthenticationSchema = new mongoose.Schema({
   fullName: {
@@ -20,8 +20,8 @@ const artistAuthenticationSchema = new mongoose.Schema({
     type: String,
     default: "artist",
   },
-  password:{
-    type:String,
+  password: {
+    type: String,
   },
   isVerified: {
     type: Boolean,
@@ -31,14 +31,14 @@ const artistAuthenticationSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  isRememberMe:{
-    type:Boolean,
-    default:false
+  isRememberMe: {
+    type: Boolean,
+    default: false,
   },
-  isProfileComplete:{
-    type:Boolean,
-    default:false
-  }
+  isProfileComplete: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 module.exports = mongoose.model(

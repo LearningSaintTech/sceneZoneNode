@@ -1,6 +1,6 @@
 const Event = require("../../models/Events/event");
 const EventInvitation = require("../../models/InviteArtist/inviteArtist");
-const { uploadImage, deleteImage } = require("../../../utils/s3Functions");
+const { uploadImage, deleteImage,deleteFromS3 } = require("../../../utils/s3Functions");
 const HostProfile = require("../../models/Profile/profile");
 const mongoose = require("mongoose");
 const { apiResponse } = require("../../../utils/apiResponse");
@@ -453,6 +453,8 @@ exports.updateEvent = async (req, res) => {
   }
 };
 
+
+
 // DELETE Event
 exports.deleteEvent = async (req, res) => {
   try {
@@ -476,23 +478,20 @@ exports.deleteEvent = async (req, res) => {
       });
     }
 
-    // Authorization check
-    if (!req.user.role === "admin" && event.hostId.toString() !== hostId.toString()) {
-      return apiResponse(res, {
-        success: false,
-        message: "Unauthorized to delete this event.",
-        statusCode: 403,
-      });
-    }
-
-    // Delete poster
+    // Delete poster if it exists
     if (event.posterUrl) {
-      await deleteImage(event.posterUrl);
+      try {
+        await deleteFromS3(event.posterUrl);
+      } catch (s3Error) {
+        console.error(`Failed to delete S3 poster: ${event.posterUrl}`, s3Error);
+        // Continue deletion even if S3 deletion fails to avoid orphaned events
+      }
     }
 
     // Delete associated invitations
     await EventInvitation.deleteMany({ eventId });
 
+    // Delete event
     await Event.findByIdAndDelete(eventId);
 
     return apiResponse(res, {

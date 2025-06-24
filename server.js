@@ -1,9 +1,9 @@
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
+require("dotenv").config();
 const connectDB = require("./config/db");
 
-dotenv.config(); 
+
 
 const userAuthentication = require("./User/Routes/Auth");
 const hostAuthentication = require("./Host/Routes/Auth");
@@ -36,6 +36,12 @@ const AdminForgotPassword = require("./Admin/Routes/forgotPassword");
 const RateArtist = require("./Host/Routes/Rating");
 const RateEvent = require("./Artist/Routes/Rating");
 const ticket = require("./User/Routes/buyTickets");
+
+//create by shwet
+const bannerRoutes=require("./Admin/Routes/banner")
+
+
+
 const app = express();
 const PORT = process.env.PORT;
 
@@ -74,7 +80,10 @@ app.use(
   RateEvent
 ); 
 app.use("/api/admin/auth", adminAuthentication);
-app.use("/api/admin", adminVerify,adminProfile,createUser,filterUsers,AppUsers,AdminForgotPassword);
+app.use("/api/admin", adminVerify,adminProfile,createUser,filterUsers,AppUsers,AdminForgotPassword)
+
+//Created by Shwet
+app.use("/api/admin/banner",bannerRoutes)
 
 
 app.listen(PORT,'0.0.0.0' ,() =>
