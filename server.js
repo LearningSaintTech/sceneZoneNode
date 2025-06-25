@@ -11,6 +11,7 @@ const artistAuthentication = require("./Artist/Routes/Auth");
 const adminAuthentication = require("./Admin/Routes/Auth");
 const userProfile = require("./User/Routes/userProfile");
 const artistProfile = require("./Artist/Routes/profile");
+const performanceGalleryRoutes=require("./Artist/Routes/performanceGalleryRoutes")
 const hostProfile = require("./Host/Routes/Profile");
 const events = require("./Host/Routes/Event")
 const shortlistAritst = require("./Host/Routes/shortlistArtist");
@@ -84,7 +85,7 @@ app.use("/api/admin", adminVerify,adminProfile,createUser,filterUsers,AppUsers,A
 
 //Created by Shwet
 app.use("/api/admin/banner",bannerRoutes)
-
+app.use("/api/artist/profile",performanceGalleryRoutes)
 
 app.listen(PORT,'0.0.0.0' ,() =>
   console.log(`Server running on http://localhost:${PORT}`)

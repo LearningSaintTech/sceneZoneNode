@@ -7,6 +7,9 @@ const artistProfileSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  profileImageUrl:{
+    type: String,
+  },
   dob: {
     type: Date,
     required: true
@@ -27,34 +30,64 @@ const artistProfileSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  artistSubType:{
+    type:String,
+    default:null
+  },
   instrument: {
     type: String,
+    required: true
   },
   budget: {
     type: Number,
+    required: true
   },
   isCrowdGuarantee: {
     type: Boolean,
-    default: false
+    default: false,
+    required: true
   },
-  performanceUrl: [
+  performanceUrlId:{
+    type:[mongoose.Schema.Types.ObjectId],
+    ref:"ArtistPerformanceGallery"
+  },
+  isShortlisted:{
+    type:Boolean,
+    default:false
+  },
+  AssignedEvents:[
     {
-      venueName: {
-        type: String,
-        required: true,
-        trim: true
-      },
-      genre: {
-        type: String,
-        required: true,
-        trim: true
-      },
-      videoUrl: {
-        type: String,
-        required: true,
-      }
+      type:mongoose.Schema.Types.ObjectId,
+      ref:"Event"
     }
-  ]
+  ],
+  //average rating
+  Rating:{
+    type:Number,
+    default:0
+  },
+  allRating:{
+    type:[
+      {
+        hostId:{
+          type:mongoose.Schema.Types.ObjectId,
+          ref:"HostAuthentication"
+        },
+        rating:{
+          type:Number,
+          min:1,
+          max:5
+        }
+      }
+    ],
+    default:[]
+  },
+  status:{
+    type:String,
+    enum:["pending","approved","rejected"],
+    default:"pending"
+  },
+
 }, {
   timestamps: true
 });

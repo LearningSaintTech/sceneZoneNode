@@ -6,6 +6,7 @@ const mongoose = require("mongoose");
 exports.shortlistArtist = async (req, res) => {
   try {
     const hostId = req.user.hostId;
+    console.log(hostId);
     const { artistId } = req.body; 
 
     if (!hostId || !artistId) {

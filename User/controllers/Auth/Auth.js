@@ -33,7 +33,7 @@ exports.signup = async (req, res) => {
       return apiResponse(res, {
         success: false,
         statusCode: 400,
-        message: "This mobile number is already registered as an Artist.Use different number",
+        message: "This mobile number is already registered as an Artist  Use different number",
       });
     }
     // Fix: search by mobileNumber

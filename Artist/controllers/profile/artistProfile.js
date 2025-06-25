@@ -1,31 +1,28 @@
-const {
-  uploadMultipleImages,
-  deleteImage,
-  uploadImage,
-} = require("../../../utils/s3Functions");
-const { apiResponse } = require("../../../utils/apiResponse")
-
+const { uploadImage, deleteImage } = require("../../../utils/s3Functions");
+const { apiResponse } = require("../../../utils/apiResponse");
 const ArtistProfile = require("../../models/Profile/profile");
 const ArtistAuthentication = require("../../models/Auth/Auth");
+const ArtistPerformanceGallery=require("../../../Artist/models/Profile/performanceGalleryArtist")
+const mongoose = require("mongoose");
 
 
+// Create Artist Profile
 exports.createArtistProfile = async (req, res) => {
   try {
     const artistId = req.user.artistId;
-
     const {
       dob,
       email,
       address,
-      genre,
+      artistType,
+      artistSubType,
       instrument,
       budget,
-      location,
-      ArtistType,
-      Musician,
-      venueNames // can be string or array
+      isCrowdGuarantee,
+      performanceUrlId, // Array of ObjectIds referencing ArtistPerformanceGallery
     } = req.body;
 
+    // Validate artist
     const artist = await ArtistAuthentication.findById(artistId);
     if (!artist) {
       return apiResponse(res, {
@@ -38,21 +35,42 @@ exports.createArtistProfile = async (req, res) => {
     if (!artist.isVerified) {
       return apiResponse(res, {
         success: false,
-        message: "Artist not verified",
+        message: "Artist not verified.",
         statusCode: 400,
       });
     }
 
+    // Check for existing profile
     const existingProfile = await ArtistProfile.findOne({ artistId });
     if (existingProfile) {
       return apiResponse(res, {
         success: false,
-        message: "Profile already exists",
+        message: "Profile already exists.",
         statusCode: 400,
       });
     }
 
-    const emailExists = await ArtistProfile.findOne({ email });
+    // Validate required fields
+    if (!dob || !email || !address || !artistType || !instrument || !budget) {
+      return apiResponse(res, {
+        success: false,
+        message: "Missing required fields",
+        statusCode: 400,
+      });
+    }
+
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid email format",
+        statusCode: 400,
+      });
+    }
+    const emailExists = await ArtistProfile.findOne({
+      email: email.toLowerCase(),
+    });
     if (emailExists) {
       return apiResponse(res, {
         success: false,
@@ -61,82 +79,116 @@ exports.createArtistProfile = async (req, res) => {
       });
     }
 
+    // Validate date of birth
+    if (isNaN(new Date(dob).getTime())) {
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid date of birth",
+        statusCode: 400,
+      });
+    }
+
+    // Validate artistSubType
+    if (artistType === "Musician" && !artistSubType) {
+      return apiResponse(res, {
+        success: false,
+        message: "artistSubType is required  when artistType is Musician",
+        statusCode: 400,
+      });
+    }
+    // Validate artistSubType
+    if (artistType !== "Musician" && artistSubType) {
+      return apiResponse(res, {
+        success: false,
+        message: `artistSubType is not required when artistType is ${artistType}`,
+        statusCode: 400,
+      });
+    }
+
+    // Validate and normalize performanceUrlId
+    let performanceUrlIds = [];
+    if (performanceUrlId) {
+      let ids = performanceUrlId;
+
+      // Handle stringified array or single string
+      if (typeof performanceUrlId === "string") {
+        try {
+          // Attempt to parse as JSON array if it looks like one
+          if (performanceUrlId.startsWith("[") && performanceUrlId.endsWith("]")) {
+            ids = JSON.parse(performanceUrlId);
+          } else if (mongoose.Types.ObjectId.isValid(performanceUrlId)) {
+            ids = [performanceUrlId];
+          } else {
+            return apiResponse(res, {
+              success: false,
+              message: `Invalid performanceUrlId format: ${performanceUrlId}`,
+              statusCode: 400,
+            });
+          }
+        } catch (err) {
+          return apiResponse(res, {
+            success: false,
+            message: `Invalid performanceUrlId format: ${performanceUrlId}`,
+            statusCode: 400,
+          });
+        }
+      }
+
+      // Ensure ids is an array
+      performanceUrlIds = Array.isArray(ids) ? ids : [ids];
+
+      // Validate ObjectIds and existence in ArtistPerformanceGallery
+      for (const id of performanceUrlIds) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+          return apiResponse(res, {
+            success: false,
+            message: `Invalid performanceUrlId: ${id}`,
+            statusCode: 400,
+          });
+        }
+        const performance = await ArtistPerformanceGallery.findById(id);
+        if (!performance || performance.artistId.toString() !== artistId.toString()) {
+          return apiResponse(res, {
+            success: false,
+            message: `Performance not found or does not belong to artist: ${id}`,
+            statusCode: 404,
+          });
+        }
+      }
+    }
+
     // Handle profile image
     let profileImageUrl = null;
-    if (req.files?.profileImageUrl?.[0]) {
-      const fileName = `Artist/profileImage/artist_${artistId}_${Date.now()}-${req.files.profileImageUrl[0].originalname}`;
-      profileImageUrl = await uploadImage(req.files.profileImageUrl[0], fileName);
-    } else {
-      return apiResponse(res, {
-        success: false,
-        message: "Profile image is required.",
-        statusCode: 400,
-      });
+    if (req.file) {
+      const fileName = `Artist/profileImage/artist_${artistId}_${Date.now()}-${req.file.originalname}`;
+      profileImageUrl = await uploadImage(req.file, fileName);
     }
 
-    // Handle venueNames conversion
-    let venueArray = [];
-    if (Array.isArray(venueNames)) {
-      venueArray = venueNames;
-    } else if (typeof venueNames === "string") {
-      venueArray = venueNames.split(",").map((v) => v.trim()).filter(Boolean);
-    }
-
-    // Handle performance videos
-    let performanceUrls = [];
-    const performanceFiles = req.files?.performanceUrl || [];
-
-    if (performanceFiles.length === 0) {
-      return apiResponse(res, {
-        success: false,
-        message: "At least one performance video is required.",
-        statusCode: 400,
-      });
-    }
-
-    // Validation: Either 1 venueName for all, or equal number
-    if (
-      venueArray.length !== 1 &&
-      venueArray.length !== performanceFiles.length
-    ) {
-      return apiResponse(res, {
-        success: false,
-        message:
-          "Number of venue names must match number of performance videos or provide one venue for all.",
-        statusCode: 400,
-      });
-    }
-
-    for (let i = 0; i < performanceFiles.length; i++) {
-      const file = performanceFiles[i];
-      const fileName = `Artist/performance/artist_${artistId}_${Date.now()}-${file.originalname}`;
-      const videoUrl = await uploadImage(file, fileName);
-
-      performanceUrls.push({
-        venueName: venueArray.length === 1 ? venueArray[0] : venueArray[i],
-        videoUrl,
-      });
-    }
-
+    // Create new profile
     const newProfile = new ArtistProfile({
       artistId,
-      fullName: artist.fullName,
-      mobileNumber: artist.mobileNumber,
-      dob,
-      email,
-      address,
-      genre: Array.isArray(genre) ? genre : [genre],
-      instrument,
-      budget,
-      location,
       profileImageUrl,
-      performanceUrl: performanceUrls,
-      ArtistType,
-      isMusician: ArtistType === "Musician",
-      Musician,
+      dob: new Date(dob),
+      email: email.toLowerCase(),
+      address: address.trim(),
+      artistType,
+      artistSubType: artistType === "Musician" ? artistSubType : null,
+      instrument,
+      budget: Number(budget),
+      isCrowdGuarantee: Boolean(isCrowdGuarantee),
+      performanceUrlId: performanceUrlIds,
+      status: "pending",
     });
 
     await newProfile.save();
+
+    // Update ArtistPerformanceGallery entries with artistProfileId
+    await ArtistPerformanceGallery.updateMany(
+      { artistId, artistProfileId: null },
+      { $set: { artistProfileId: newProfile._id } }
+    );
+
+    // Update artist authentication
     artist.isProfileComplete = true;
     await artist.save();
 
@@ -146,65 +198,23 @@ exports.createArtistProfile = async (req, res) => {
       data: newProfile,
       statusCode: 201,
     });
-  } catch (error) {
-    console.error("Error inside createArtistProfile:", error);
+  } catch (err) {
+    console.error("Create Artist Profile Error:", err);
     return apiResponse(res, {
       success: false,
-      message: "Server error",
-      data: { error: error.message },
       statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
     });
   }
 };
 
-
-exports.getArtistProfile = async (req, res) => {
-  try {
-    const user = req.user;
-    const artistId = user.artistId;
-
-    const profile = await ArtistProfile.findOne({ artistId });
-
-    if (!profile) {
-      return apiResponse(res, {
-        success: false,
-        message: "Artist profile not found",
-        statusCode: 404,
-      });
-    }
-
-    // Artist can always view their own profile
-    const isArtist =
-      user.artistId && user.artistId.toString() === profile.artistId.toString();
-
-    if (!isArtist && profile.status !== "approved") {
-      return apiResponse(res, {
-        success: false,
-        message: "Profile is not available to view",
-        statusCode: 403,
-      });
-    }
-
-    return apiResponse(res, {
-      message: "Profile fetched",
-      data: profile,
-    });
-  } catch (error) {
-    console.error("Error:", error.message);
-    return apiResponse(res, {
-      success: false,
-      message: "Server error",
-      data: { error: error.message },
-      statusCode: 500,
-    });
-  }
-};
-
+// Update Artist Profile
 exports.updateArtistProfile = async (req, res) => {
   try {
     const artistId = req.user.artistId;
 
-    // Find existing artist and verify
+    // Validate artist
     const artist = await ArtistAuthentication.findById(artistId);
     if (!artist) {
       return apiResponse(res, {
@@ -223,7 +233,7 @@ exports.updateArtistProfile = async (req, res) => {
     }
 
     // Find existing profile
-    const profile = await ArtistProfile.findOne({ artistId });
+    let profile = await ArtistProfile.findOne({ artistId });
     if (!profile) {
       return apiResponse(res, {
         success: false,
@@ -236,18 +246,18 @@ exports.updateArtistProfile = async (req, res) => {
       dob,
       email,
       address,
-      genre,
+      artistType,
+      artistSubType,
       instrument,
       budget,
-      location,
-      ArtistType,
-      Musician,
-      newPerformances, // Array of { venueName, videoUrl } for adding new videos
-      replacePerformance, // Object { identifier, venueName, videoUrl } for replacement
-      deletePerformance, // Object { identifier } for deletion
+      isCrowdGuarantee,
+      performanceUrlId,
     } = req.body;
 
-    // Validate email format and uniqueness if provided and changed
+    // Track if any fields were updated
+    let fieldsUpdated = false;
+
+    // Validate email
     if (email && email !== profile.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
@@ -257,7 +267,9 @@ exports.updateArtistProfile = async (req, res) => {
           statusCode: 400,
         });
       }
-      const emailExists = await ArtistProfile.findOne({ email });
+      const emailExists = await ArtistProfile.findOne({
+        email: email.toLowerCase(),
+      });
       if (emailExists) {
         return apiResponse(res, {
           success: false,
@@ -265,10 +277,11 @@ exports.updateArtistProfile = async (req, res) => {
           statusCode: 400,
         });
       }
-      profile.email = email;
+      profile.email = email.toLowerCase();
+      fieldsUpdated = true;
     }
 
-    // Validate and update fields if provided
+    // Validate date of birth
     if (dob) {
       if (isNaN(new Date(dob).getTime())) {
         return apiResponse(res, {
@@ -277,36 +290,54 @@ exports.updateArtistProfile = async (req, res) => {
           statusCode: 400,
         });
       }
-      profile.dob = dob;
+      profile.dob = new Date(dob);
+      fieldsUpdated = true;
     }
-    if (address) profile.address = address;
-    if (genre) profile.genre = Array.isArray(genre) ? genre : [genre];
-    if (instrument) profile.instrument = instrument;
-    if (budget) profile.budget = budget;
-    if (location) profile.location = location;
-    if (ArtistType) {
-      profile.ArtistType = ArtistType;
-      profile.isMusician = ArtistType === "Musician";
-    }
-    if (Musician) profile.Musician = Musician;
 
-    // Check if any fields were updated
-    const fieldsUpdated = dob || email || address || genre || instrument || budget || location || ArtistType || Musician;
+    // Update other fields
+    if (address) {
+      profile.address = address.trim();
+      fieldsUpdated = true;
+    }
+    if (artistType) {
+      profile.artistType = artistType;
+      profile.artistSubType = artistType === "Musician" ? artistSubType || null : null;
+      fieldsUpdated = true;
+    } else if (artistSubType && profile.artistType !== "Musician") {
+      return apiResponse(res, {
+        success: false,
+        message: "artistSubType can only be set when artistType is Musician",
+        statusCode: 400,
+      });
+    }
+    if (instrument) {
+      profile.instrument = instrument;
+      fieldsUpdated = true;
+    }
+    if (budget) {
+      profile.budget = Number(budget);
+      fieldsUpdated = true;
+    }
+    if (isCrowdGuarantee !== undefined) {
+      profile.isCrowdGuarantee = Boolean(isCrowdGuarantee);
+      fieldsUpdated = true;
+    }
 
     // Handle profile image update
-    if (req.files?.profileImageUrl?.[0]) {
-      const fileName = `Artist/profileImage/artist_${artistId}_${Date.now()}-${req.files.profileImageUrl[0].originalname}`;
+    if (req.file) {
+      const fileName = `Artist/profileImage/artist_${artistId}_${Date.now()}-${req.file.originalname}`;
       try {
-        const newUrl = await uploadImage(req.files.profileImageUrl[0], fileName);
+        const newUrl = await uploadImage(req.file, fileName);
         if (profile.profileImageUrl) {
           try {
-            const oldFile = profile.profileImageUrl.split(".com/")[1];
+            const oldFile = profile.profileImageUrl.split("/").pop();
             await deleteImage(oldFile);
           } catch (err) {
             console.warn("Failed to delete old profile image:", err.message);
           }
         }
         profile.profileImageUrl = newUrl;
+        fieldsUpdated = true;
       } catch (err) {
         return apiResponse(res, {
           success: false,
@@ -316,145 +347,62 @@ exports.updateArtistProfile = async (req, res) => {
       }
     }
 
-    // Handle performance videos
-    let performanceUrls = profile.performanceUrl || [];
-    const performanceFiles = req.files?.performanceUrl || [];
+    // Handle performanceUrlId update
+    if (performanceUrlId) {
+      let performanceUrlIds = [];
+      let ids = performanceUrlId;
 
-    // Add new performance videos
-    if (newPerformances && Array.isArray(newPerformances)) {
-      for (const perf of newPerformances) {
-        if (!perf.venueName || perf.venueName.trim() === "") {
-          return apiResponse(res, {
-            success: false,
-            message: "Venue name cannot be empty",
-            statusCode: 400,
-          });
-        }
-      }
-
-      for (let i = 0; i < performanceFiles.length; i++) {
-        const file = performanceFiles[i];
-        const venueName = newPerformances[i]?.venueName || newPerformances[0]?.venueName;
-        if (!venueName) {
-          return apiResponse(res, {
-            success: false,
-            message: "Venue name required for new performance video",
-            statusCode: 400,
-          });
-        }
-        const fileName = `Artist/performance/artist_${artistId}_${Date.now()}-${file.originalname}`;
+      // Handle stringified array or single string
+      if (typeof performanceUrlId === "string") {
         try {
-          const videoUrl = await uploadImage(file, fileName);
-          performanceUrls.push({
-            venueName,
-            videoUrl,
-            _id: new mongoose.Types.ObjectId(),
-          });
-        } catch (err) {
-          console.error(`Failed to upload performance video ${file.originalname}:`, err.message);
-          return apiResponse(res, {
-            success: false,
-            message: `Failed to upload performance video: ${file.originalname}`,
-            statusCode: 500,
-          });
-        }
-      }
-    }
-
-    // Replace performance video by venueName or _id
-    if (replacePerformance && replacePerformance.identifier) {
-      const indexToReplace = performanceUrls.findIndex(
-        (entry) =>
-          entry._id.toString() === replacePerformance.identifier ||
-          entry.venueName === replacePerformance.identifier
-      );
-      if (indexToReplace === -1) {
-        return apiResponse(res, {
-          success: false,
-          message: "Performance video to replace not found",
-          statusCode: 400,
-        });
-      }
-
-      if (req.files?.performanceUrl?.[0]) {
-        const file = req.files.performanceUrl[0];
-        const fileName = `Artist/performance/artist_${artistId}_${Date.now()}-${file.originalname}`;
-        try {
-          const newVideoUrl = await uploadImage(file, fileName);
-          try {
-            const oldFileName = performanceUrls[indexToReplace].videoUrl.split(".com/")[1];
-            await deleteImage(oldFileName);
-          } catch (error) {
-            console.warn(
-              `Failed to delete old performance video ${performanceUrls[indexToReplace].videoUrl}:`,
-              error.message
-            );
+          if (performanceUrlId.startsWith("[") && performanceUrlId.endsWith("]")) {
+            ids = JSON.parse(performanceUrlId);
+          } else if (mongoose.Types.ObjectId.isValid(performanceUrlId)) {
+            ids = [performanceUrlId];
+          } else {
+            return apiResponse(res, {
+              success: false,
+              message: `Invalid performanceUrlId format: ${performanceUrlId}`,
+              statusCode: 400,
+            });
           }
-
-          performanceUrls[indexToReplace] = {
-            venueName: replacePerformance.venueName || performanceUrls[indexToReplace].venueName,
-            videoUrl: newVideoUrl,
-            _id: performanceUrls[indexToReplace]._id,
-          };
         } catch (err) {
           return apiResponse(res, {
             success: false,
-            message: "Failed to upload replacement video",
-            statusCode: 500,
+            message: `Invalid performanceUrlId format: ${performanceUrlId}`,
+            statusCode: 400,
           });
         }
-      } else if (replacePerformance.venueName) {
-        // Update venueName only
-        performanceUrls[indexToReplace].venueName = replacePerformance.venueName;
-      }
-    }
-
-    // Delete performance video by venueName or _id
-    if (deletePerformance && deletePerformance.identifier) {
-      const indexToDelete = performanceUrls.findIndex(
-        (entry) =>
-          entry._id.toString() === deletePerformance.identifier ||
-          entry.venueName === deletePerformance.identifier
-      );
-      if (indexToDelete === -1) {
-        return apiResponse(res, {
-          success: false,
-          message: "Performance video to delete not found",
-          statusCode: 400,
-        });
       }
 
-      try {
-        const fileName = performanceUrls[indexToDelete].videoUrl.split(".com/")[1];
-        await deleteImage(fileName);
-      } catch (err) {
-        console.warn("Failed to delete video:", err.message);
+      // Ensure ids is an array
+      performanceUrlIds = Array.isArray(ids) ? ids : [ids];
+
+      // Validate ObjectIds and existence in ArtistPerformanceGallery
+      for (const id of performanceUrlIds) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+          return apiResponse(res, {
+            success: false,
+            message: `Invalid performanceUrlId: ${id}`,
+            statusCode: 400,
+          });
+        }
+        const performance = await ArtistPerformanceGallery.findById(id);
+        if (!performance || performance.artistId.toString() !== artistId.toString()) {
+          return apiResponse(res, {
+            success: false,
+            message: `Performance not found or does not belong to artist: ${id}`,
+            statusCode: 404,
+          });
+        }
       }
 
-      performanceUrls.splice(indexToDelete, 1);
+      profile.performanceUrlId = performanceUrlIds;
+      fieldsUpdated = true;
     }
-
-    // Ensure at least one performance video remains if required
-    if (performanceUrls.length === 0 && (deletePerformance || performanceFiles.length === 0)) {
-      return apiResponse(res, {
-        success: false,
-        message: "At least one performance video is required.",
-        statusCode: 400,
-      });
-    }
-
-    // Update performanceUrl in profile
-    profile.performanceUrl = performanceUrls;
 
     // Check if any update was made
-    if (
-      !fieldsUpdated &&
-      !req.files?.profileImageUrl &&
-      !newPerformances &&
-      !replacePerformance &&
-      !deletePerformance &&
-      performanceFiles.length === 0
-    ) {
+    if (!fieldsUpdated && !req.file) {
       return apiResponse(res, {
         success: false,
         message: "No updates provided",
@@ -471,66 +419,105 @@ exports.updateArtistProfile = async (req, res) => {
       data: profile,
       statusCode: 200,
     });
-  } catch (error) {
-    console.error("Error in updateArtistProfile:", error.message);
+  } catch (err) {
+    console.error("Update Artist Profile Error:", err);
     return apiResponse(res, {
       success: false,
-      message: "Server error",
-      data: { error: error.message },
       statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
     });
   }
 };
 
-exports.getAllArtists = async (req, res) => {
+exports.getArtistProfile = async (req, res) => {
   try {
-    const role = req.user.role;
-    console.log("roleee",role)
-    let artists;
+    const { artistId } = req.user;
 
-    if (role === "admin") {
-      artists = await ArtistProfile.find();
-    } else {
-      artists = await ArtistProfile.find({ status: "approved" }).select(
-        "genre budget profileImageUrl artistId"
-      );
+    // Fetch profile based on artistId from req.user
+    const profile = await ArtistProfile.findOne({ artistId })
+      .populate("performanceUrlId", "venueName genre videoUrl")
+      .populate("AssignedEvents", "eventName date venue");
+
+    if (!profile) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 404,
+        message: "Artist profile not found",
+      });
     }
 
-    console.log("arttt",artists)
+    return apiResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "Profile fetched",
+      data: profile,
+    });
+  } catch (err) {
+    console.error("Get Artist Profile Error:", err);
+    return apiResponse(res, {
+      success: false,
+      statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
+    });
+  }
+};
+
+
+// Get All Artists
+exports.getAllArtists = async (req, res) => {
+  try {
+    // Fetch all artist profiles with populated fields
+    const artists = await ArtistProfile.find()
+      .populate("performanceUrlId", "venueName genre videoUrl")
+      .populate("AssignedEvents", "eventName date venue");
 
     if (!artists || artists.length === 0) {
       return apiResponse(res, {
         success: false,
-        message: "No artist profiles found",
         statusCode: 404,
+        message: "No artist profiles found",
       });
     }
 
     return apiResponse(res, {
       success: true,
+      statusCode: 200,
       message: "Artist profiles fetched successfully",
       data: artists,
     });
-
-  } catch (error) {
-    console.error("Error in getAllArtists:", error.message);
+  } catch (err) {
+    console.error("Get All Artists Error:", err);
     return apiResponse(res, {
       success: false,
-      message: "Server error",
-      data: { error: error.message },
       statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
     });
   }
 };
 
-
-
-
+// Delete Artist Profile
 exports.deleteArtistProfile = async (req, res) => {
   try {
-    const artistId = req.user.artistId;
+    const user = req.user;
+    let profile;
 
-    const profile = await ArtistProfile.findOne({ artistId });
+    if (user.role === "artist") {
+      profile = await ArtistProfile.findOne({ artistId: user.artistId });
+    } else if (user.role === "admin") {
+      const { artistId } = req.body;
+      if (!artistId || !mongoose.Types.ObjectId.isValid(artistId)) {
+        return apiResponse(res, {
+          success: false,
+          statusCode: 400,
+          message: "Invalid or missing artistId.",
+        });
+      }
+      profile = await ArtistProfile.findOne({ artistId });
+    }
+
     if (!profile) {
       return apiResponse(res, {
         success: false,
@@ -539,62 +526,64 @@ exports.deleteArtistProfile = async (req, res) => {
       });
     }
 
-    // Delete profile image from S3 if it exists
+    // Delete profile image
     if (profile.profileImageUrl) {
       try {
-        const fileName = profile.profileImageUrl.split(".com/")[1];
+        const fileName = profile.profileImageUrl.split("/").pop();
         await deleteImage(fileName);
-        console.log("Deleted profile image:", fileName);
-      } catch (error) {
-        console.warn(
-          `Failed to delete profile image ${profile.profileImageUrl}:`,
-          error.message
-        );
+      } catch (err) {
+        console.warn("Failed to delete profile image:", err.message);
       }
     }
 
-    // Delete performance images from S3
-    const deletePromises = profile.performanceUrl.map(async (url) => {
-      try {
-        const fileName = url.split(".com/")[1];
-        await deleteImage(fileName);
-        console.log(" Deleted performance image:", fileName);
-      } catch (error) {
-        console.warn(
-          `Failed to delete performance image ${url}:`,
-          error.message
-        );
-      }
-    });
-    await Promise.all(deletePromises);
+    // Reset artistProfileId in ArtistPerformanceGallery
+    await ArtistPerformanceGallery.updateMany(
+      { artistProfileId: profile._id },
+      { $set: { artistProfileId: null } }
+    );
 
-    // Delete the profile from MongoDB
-    await ArtistProfile.deleteOne({ artistId });
-    console.log("Artist profile deleted from database for ID:", artistId);
+    // Update artist authentication
+    const artist = await ArtistAuthentication.findById(profile.artistId);
+    if (artist) {
+      artist.isProfileComplete = false;
+      await artist.save();
+    }
+
+    // Delete profile
+    await ArtistProfile.deleteOne({ artistId: profile.artistId });
 
     return apiResponse(res, {
+      success: true,
       message: "Artist profile deleted successfully",
+      statusCode: 200,
     });
-  } catch (error) {
-    console.error("Error in deleteArtistProfile:", error.message);
+  } catch (err) {
+    console.error("Delete Artist Profile Error:", err);
     return apiResponse(res, {
       success: false,
-      message: "Server error",
-      data: { error: error.message },
       statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
     });
   }
 };
 
-
-
+// Get Artist Performance
 exports.getArtistPerformance = async (req, res) => {
   try {
-    const { artistId } = req.params; // Artist ID is passed in the request body
+    const { artistId } = req.params;
 
-    // Find the artist profile
-    const profile = await ArtistProfile.findOne({ artistId });
-    console.log("AritstId",profile)
+    if (!mongoose.Types.ObjectId.isValid(artistId)) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "Invalid artistId format",
+      });
+    }
+
+    const profile = await ArtistProfile.findOne({ artistId }).select(
+      "performanceUrlId artistId artistType artistSubType"
+    );
 
     if (!profile) {
       return apiResponse(res, {
@@ -604,27 +593,32 @@ exports.getArtistPerformance = async (req, res) => {
       });
     }
 
-    // Prepare performance data with venueName, videoUrl, avgRating, and genre
-    const performances = (profile.performanceUrl || []).map(perf => ({
-      venueName: perf.venueName,
-      videoUrl: perf.videoUrl,
-      avgRating: perf.avgRating || 0,
-      genre: profile.genre // genre is at profile level
-    }));
+    if (profile.status !== "approved") {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 403,
+        message: "Profile is not available to view",
+      });
+    }
+
+    // Populate performanceUrlId to fetch ArtistPerformanceGallery details
+    const performances = await ArtistProfile.findOne({ artistId })
+      .populate("performanceUrlId", "venueName genre videoUrl")
+      .select("performanceUrlId");
 
     return apiResponse(res, {
       success: true,
       message: "Artist performances fetched successfully",
-      data: performances,
+      data: performances.performanceUrlId || [],
       statusCode: 200,
     });
-  } catch (error) {
-    console.error("Error in getArtistPerformance:", error.message);
+  } catch (err) {
+    console.error("Get Artist Performance Error:", err);
     return apiResponse(res, {
       success: false,
-      message: "Server error",
-      data: { error: error.message },
       statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
     });
   }
-}
+};

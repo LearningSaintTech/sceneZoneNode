@@ -8,13 +8,6 @@ const userAuthenticationSchema = new mongoose.Schema({
   mobileNumber: {
     type: Number,
     required: true,
-    validate: {
-      validator: function (v) {
-        return /^[0-9]{10}$/.test(v.toString());
-      },
-      message: (props) =>
-        `${props.value} is not a valid 10-digit mobile number!`,
-    },
   },
   role: {
     type: String,
