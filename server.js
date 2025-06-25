@@ -36,11 +36,12 @@ const AppUsers = require("./Admin/Routes/allUsers");
 const AdminForgotPassword = require("./Admin/Routes/forgotPassword");
 const RateArtist = require("./Host/Routes/Rating");
 const RateEvent = require("./Artist/Routes/Rating");
-const ticket = require("./User/Routes/buyTickets");
+
 
 //create by shwet
 const bannerRoutes=require("./Admin/Routes/banner")
-
+const ticketSettingRoutes = require("./Host/Routes/ticketSetting");
+const ticketBookingRoutes = require("./Host/Routes/ticketBooking");
 
 
 const app = express();
@@ -56,7 +57,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/user/auth", userAuthentication);
-app.use("/api/user", userProfile, userFavouriteEvent, UserForgotPassword,userPaymentDetails,guestRequest,RateEvent,ticket); 
+app.use("/api/user", userProfile, userFavouriteEvent, UserForgotPassword,userPaymentDetails,guestRequest,RateEvent); 
 app.use("/api/host/auth", hostAuthentication);
 app.use(
   "/api/host",
@@ -66,7 +67,8 @@ app.use(
   AritstFilter,
   HostForgotPassword,
   hostPaymentDetails,
-  RateArtist
+  RateArtist,
+  ticketSettingRoutes
 );
 app.use("/api/host/events", events);
 app.use("/api/artist/auth", artistAuthentication);
@@ -86,6 +88,7 @@ app.use("/api/admin", adminVerify,adminProfile,createUser,filterUsers,AppUsers,A
 //Created by Shwet
 app.use("/api/admin/banner",bannerRoutes)
 app.use("/api/artist/profile",performanceGalleryRoutes)
+app.use("/api/user/ticket", ticketBookingRoutes);
 
 app.listen(PORT,'0.0.0.0' ,() =>
   console.log(`Server running on http://localhost:${PORT}`)
