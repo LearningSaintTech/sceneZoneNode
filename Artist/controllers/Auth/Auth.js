@@ -7,6 +7,7 @@ const { apiResponse } = require("../../../utils/apiResponse");
 const HostAuth = require("../../../Host/models/Auth/Auth");
 const UserAuth = require("../../../User/models/Auth/Auth");
 const mongoose=require("mongoose")
+const ArtistAuthentication=require("../../../Artist/models/Auth/Auth")
 
 require("dotenv").config();
 
