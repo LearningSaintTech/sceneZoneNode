@@ -20,9 +20,10 @@ exports.createEvent = async (req, res) => {
       artistId,
       guestLinkUrl,
       Discount,
+      assignedArtists,
     } = req.body;
 
-    // Basic validations
+    // Basic validations for required fields
     if (!eventName || !venue || !eventDate || !eventTime || !genre || !budget) {
       return apiResponse(res, {
         success: false,
@@ -31,9 +32,10 @@ exports.createEvent = async (req, res) => {
       });
     }
 
+    // Parse and validate eventDate
     let parsedEventDate;
     try {
-      parsedEventDate = typeof eventDate === 'string' ? JSON.parse(eventDate) : eventDate;
+      parsedEventDate = typeof eventDate === "string" ? JSON.parse(eventDate) : eventDate;
       if (!Array.isArray(parsedEventDate) || parsedEventDate.length === 0) {
         return apiResponse(res, {
           success: false,
@@ -49,9 +51,28 @@ exports.createEvent = async (req, res) => {
       });
     }
 
+    // Validate eventDate elements
+    const invalidDate = parsedEventDate.find((date) => isNaN(new Date(date).getTime()));
+    if (invalidDate) {
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid date provided in eventDate.",
+        statusCode: 400,
+      });
+    }
+
+    // Generate showStatus based on eventDate
+    const today = new Date();
+    const showStatusArray = parsedEventDate.map((date) => {
+      const parsedDate = new Date(date);
+      const status = parsedDate < today ? "recent" : "upcoming";
+      return { date: parsedDate.toISOString().split("T")[0], status };
+    });
+
+    // Parse and validate genre
     let parsedGenre;
     try {
-      parsedGenre = typeof genre === 'string' ? JSON.parse(genre) : genre;
+      parsedGenre = typeof genre === "string" ? JSON.parse(genre) : genre;
       if (!Array.isArray(parsedGenre) || parsedGenre.length === 0) {
         return apiResponse(res, {
           success: false,
@@ -67,12 +88,12 @@ exports.createEvent = async (req, res) => {
       });
     }
 
-    // Validate eventDate elements
-    const invalidDate = parsedEventDate.find((date) => isNaN(new Date(date).getTime()));
-    if (invalidDate) {
+    // Validate eventTime format (e.g., "12:30 PM")
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?\s?(AM|PM)$/i;
+    if (!timeRegex.test(eventTime.trim())) {
       return apiResponse(res, {
         success: false,
-        message: "Invalid date provided in eventDate.",
+        message: "Invalid eventTime format. Use 'HH:MM AM/PM' (e.g., '12:30 PM').",
         statusCode: 400,
       });
     }
@@ -91,7 +112,6 @@ exports.createEvent = async (req, res) => {
       eventName: eventName.trim(),
       eventDate: { $in: parsedEventDate },
     });
-
     if (existingEvent) {
       return apiResponse(res, {
         success: false,
@@ -100,23 +120,18 @@ exports.createEvent = async (req, res) => {
       });
     }
 
-    // Handle poster image upload
-    if (!req.file) {
-      return apiResponse(res, {
-        success: false,
-        message: "Poster image is required.",
-        statusCode: 400,
-      });
+    // Handle poster upload (optional)
+    let posterImageUrl = null;
+    if (req.file) {
+      const fileName = `Host/EventPoster/host_${hostId}_${Date.now()}-${req.file.originalname}`;
+      posterImageUrl = await uploadImage(req.file, fileName);
     }
 
-    const fileName = `Host/EventPoster/host_${hostId}_${Date.now()}-${req.file.originalname}`;
-    const posterImageUrl = await uploadImage(req.file, fileName);
-
-    // Parse Discount if it's a string
+    // Parse and validate Discount
     let parsedDiscount;
     const defaultDiscount = { level1: 0, level2: 0, level3: 0 };
     try {
-      parsedDiscount = typeof Discount === 'string' ? JSON.parse(Discount) : (Discount || {});
+      parsedDiscount = typeof Discount === "string" ? JSON.parse(Discount) : (Discount || {});
       parsedDiscount = {
         level1: parsedDiscount.level1 ?? defaultDiscount.level1,
         level2: parsedDiscount.level2 ?? defaultDiscount.level2,
@@ -139,6 +154,38 @@ exports.createEvent = async (req, res) => {
       });
     }
 
+    // Validate assignedArtists (optional)
+    let parsedAssignedArtists = [];
+    if (assignedArtists) {
+      try {
+        parsedAssignedArtists = typeof assignedArtists === "string" ? JSON.parse(assignedArtists) : assignedArtists;
+        if (!Array.isArray(parsedAssignedArtists)) {
+          return apiResponse(res, {
+            success: false,
+            message: "assignedArtists must be an array of valid ObjectIds.",
+            statusCode: 400,
+          });
+        }
+        // Validate each artistId
+        for (const artistId of parsedAssignedArtists) {
+          if (!mongoose.isValidObjectId(artistId)) {
+            return apiResponse(res, {
+              success: false,
+              message: `Invalid artistId in assignedArtists: ${artistId}`,
+              statusCode: 400,
+            });
+          }
+        }
+      } catch (error) {
+        return apiResponse(res, {
+          success: false,
+          message: "Invalid assignedArtists format. It must be a valid JSON array.",
+          statusCode: 400,
+        });
+      }
+    }
+
+    // Create new event
     const newEvent = new Event({
       hostId,
       eventName: eventName.trim(),
@@ -151,11 +198,18 @@ exports.createEvent = async (req, res) => {
       posterUrl: posterImageUrl,
       guestLinkUrl: guestLinkUrl?.trim() || null,
       Discount: parsedDiscount,
+      showStatus: showStatusArray,
+      assignedArtists: parsedAssignedArtists,
+      status: "pending",
+      isCompleted: false,
+      isCancelled: false,
+      Rating: 0,
+      eventRatings: [],
     });
 
     await newEvent.save();
 
-    // Create invitation if artistId is provided
+    // Create invitation if artistId is provided (backward compatibility)
     if (artistId) {
       if (!mongoose.isValidObjectId(artistId)) {
         return apiResponse(res, {
@@ -201,7 +255,7 @@ exports.createEvent = async (req, res) => {
 // GET All Events
 exports.getAllEvents = async (req, res) => {
   try {
-     const events = await Event.find().populate("hostId assignedArtists");
+    const events = await Event.find().populate("hostId assignedArtists");
     return apiResponse(res, {
       success: true,
       message: "Events fetched successfully",
@@ -244,7 +298,6 @@ exports.getEventById = async (req, res) => {
 
     // Fetch the host's profile using hostId from the event
     const hostProfile = await HostProfile.findOne({ hostId: event.hostId }).select("profileImageUrl");
-    console.log("hostttId",hostProfile)
 
     // Attach profileImageUrl to the response
     const eventObj = event.toObject();
@@ -253,9 +306,9 @@ exports.getEventById = async (req, res) => {
     const isHost = user.hostId && user.hostId.toString() === event.hostId.toString();
     const isAdmin = user.role === "admin";
     const isApproved = event.status === "approved";
-    const isUser = !!user.userId
+    const isUser = !!user.userId;
 
-    if (!isAdmin && !isHost && isUser&& !isApproved) {
+    if (!isAdmin && !isHost && isUser && !isApproved) {
       return apiResponse(res, {
         success: false,
         message: "Access denied. Event not approved yet.",
@@ -263,18 +316,16 @@ exports.getEventById = async (req, res) => {
       });
     }
 
-    // --- Update showStatus for each event date ---
+    // Update showStatus for each event date
     if (Array.isArray(event.eventDate)) {
       const today = new Date();
       const showStatusArray = [];
 
       for (const date of event.eventDate) {
         const parsedDate = new Date(date);
-
         if (!isNaN(parsedDate)) {
           const status = parsedDate < today ? "recent" : "upcoming";
           const formattedDate = parsedDate.toISOString().split("T")[0];
-
           showStatusArray.push({ date: formattedDate, status });
         }
       }
@@ -289,7 +340,6 @@ exports.getEventById = async (req, res) => {
       message: "Event fetched successfully",
       data: eventObj,
     });
-
   } catch (error) {
     console.error("Get event by ID error:", error);
     return apiResponse(res, {
@@ -300,8 +350,6 @@ exports.getEventById = async (req, res) => {
     });
   }
 };
-
-
 
 // UPDATE Event
 exports.updateEvent = async (req, res) => {
@@ -340,7 +388,7 @@ exports.updateEvent = async (req, res) => {
     }
 
     // Authorization check
-    if (!req.user.role === "admin" && event.hostId.toString() !== hostId.toString()) {
+    if (event.hostId.toString() !== hostId.toString() && req.user.role !== "admin") {
       return apiResponse(res, {
         success: false,
         message: "Unauthorized to update this event.",
@@ -373,7 +421,7 @@ exports.updateEvent = async (req, res) => {
     if (budget && !isNaN(budget) && budget >= 0) event.budget = parseFloat(budget);
     if (isSoundSystem !== undefined) event.isSoundSystem = !!isSoundSystem;
 
-    // Update eventDate
+    // Update eventDate and showStatus
     if (addDates) {
       const datesToAdd = Array.isArray(addDates) ? addDates : [addDates];
       const validDates = datesToAdd.filter((date) => !isNaN(new Date(date).getTime()));
@@ -400,6 +448,17 @@ exports.updateEvent = async (req, res) => {
           statusCode: 400,
         });
       }
+    }
+
+    // Update showStatus after modifying eventDate
+    if (addDates || removeDates) {
+      const today = new Date();
+      const showStatusArray = event.eventDate.map((date) => {
+        const parsedDate = new Date(date);
+        const status = parsedDate < today ? "recent" : "upcoming";
+        return { date: parsedDate.toISOString().split("T")[0], status };
+      });
+      event.showStatus = showStatusArray;
     }
 
     // Update genre
@@ -442,8 +501,6 @@ exports.updateEvent = async (req, res) => {
   }
 };
 
-
-
 // DELETE Event
 exports.deleteEvent = async (req, res) => {
   try {
@@ -473,7 +530,6 @@ exports.deleteEvent = async (req, res) => {
         await deleteFromS3(event.posterUrl);
       } catch (s3Error) {
         console.error(`Failed to delete S3 poster: ${event.posterUrl}`, s3Error);
-        // Continue deletion even if S3 deletion fails to avoid orphaned events
       }
     }
 

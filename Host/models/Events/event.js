@@ -10,7 +10,7 @@ const eventSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    minlength: 3,
+    minlength: 3,  
   },
   venue: {
     type: String,
@@ -51,7 +51,6 @@ const eventSchema = new mongoose.Schema({
   },
   posterUrl: {
     type: String,
-    required: true,
     trim: true,
   },
   status: {
