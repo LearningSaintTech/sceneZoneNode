@@ -24,10 +24,11 @@ router.post(
 );
 
 router.get(
-  "/get-profile",
+  "/get-profile/:artistId",
   authMiddleware(["artist", "host", "admin"]),
   getArtistProfile
 );
+
 
 router.patch(
   "/update-profile",

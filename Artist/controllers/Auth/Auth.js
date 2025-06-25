@@ -6,6 +6,8 @@ const bcrypt = require("bcryptjs");
 const { apiResponse } = require("../../../utils/apiResponse");
 const HostAuth = require("../../../Host/models/Auth/Auth");
 const UserAuth = require("../../../User/models/Auth/Auth");
+const mongoose=require("mongoose")
+
 require("dotenv").config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -313,6 +315,48 @@ exports.loginWithPassword = async (req, res) => {
       message: "Login failed",
       data: { error: error.message },
       statusCode: 500,
+    });
+  }
+};
+
+// Get Artist
+exports.getArtists = async (req, res) => {
+  try {
+    const { artistId } = req.user;
+
+    // Validate artistId
+    if (!mongoose.isValidObjectId(artistId)) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "Invalid artist ID.",
+      });
+    }
+
+    // Fetch artist, excluding password
+    const artist = await ArtistAuthentication.findById(artistId).select("-password");
+
+    if (!artist) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 404,
+        message: "Artist not found",
+      });
+    }
+
+    return apiResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "Artist fetched successfully",
+      data: artist,
+    });
+  } catch (err) {
+    console.error("Get Artist Error:", err);
+    return apiResponse(res, {
+      success: false,
+      statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
     });
   }
 };

@@ -430,9 +430,9 @@ exports.updateArtistProfile = async (req, res) => {
   }
 };
 
-exports.getArtistProfile = async (req, res) => {
+exports.getArtistProfile= async (req, res) => {
   try {
-    const { artistId } = req.user;
+    const { artistId } = req.params;
 
     // Fetch profile based on artistId from req.user
     const profile = await ArtistProfile.findOne({ artistId })
