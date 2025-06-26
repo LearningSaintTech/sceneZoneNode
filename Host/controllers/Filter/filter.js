@@ -3,77 +3,81 @@ const { apiResponse } = require("../../../utils/apiResponse");
 
 exports.filterArtists = async (req, res) => {
   try {
-    let { genre, instrument, priceSort, budgetRange } = req.query;
+    const { price, sort, instrument, genre } = req.query;
 
-    let filter = {};
+    // Build the query object
+    let query = { status: "approved" }; // Only fetch approved artists
 
-    // Convert genre/instrument to arrays for multi-selection support
-    const genres = Array.isArray(genre) ? genre : genre ? [genre] : [];
-    const instruments = Array.isArray(instrument) ? instrument : instrument ? [instrument] : [];
+    // Handle price range filter
+    if (price) {
+      const priceRanges = {
+        "1000-2000": { budget: { $gte: 1000, $lte: 2000 } },
+        "2000-3000": { budget: { $gte: 2000, $lte: 3000 } },
+        "4000-5000": { budget: { $gte: 4000, $lte: 5000 } },
+      };
 
-    if (genres.length > 0) {
-      filter.genre = { $in: genres };
-    }
-
-    if (instruments.length > 0) {
-      filter.instrument = { $in: instruments };
-    }
-
-    // Budget range filter
-    if (budgetRange) {
-      switch (budgetRange) {
-        case "under-1000":
-          filter.budget = { $lt: 1000 };
-          break;
-        case "1000-2000":
-          filter.budget = { $gte: 1000, $lte: 2000 };
-          break;
-        case "2000-3000":
-          filter.budget = { $gte: 2000, $lte: 3000 };
-          break;
-        case "3000-plus":
-          filter.budget = { $gt: 3000 };
-          break;
+      if (priceRanges[price]) {
+        query = { ...query, ...priceRanges[price] };
+      } else {
+        return apiResponse(res, {
+          success: false,
+          statusCode: 400,
+          message: "Invalid price range. Use '1000-2000', '2000-3000', or '4000-5000'.",
+        });
       }
     }
 
-    // Sorting logic
-    let sort = {};
-    if (priceSort === "low-high") sort.budget = 1;
-    else if (priceSort === "high-low") sort.budget = -1;
+    // Handle instrument filter
+    if (instrument) {
+      query.instrument = { $regex: instrument, $options: "i" }; // Case-insensitive match
+    }
 
-    // Query database
-    const artists = await ArtistProfile.find(filter).sort(sort);
+    // Handle genre filter (using artistType or artistSubType)
+    if (genre) {
+      query.$or = [
+        { artistType: { $regex: genre, $options: "i" } },
+        { artistSubType: { $regex: genre, $options: "i" } },
+      ];
+    }
 
-    // No match found
-    if (artists.length === 0) {
+    // Handle sorting
+    let sortOption = {};
+    if (sort === "low-high") {
+      sortOption.budget = 1; // Ascending
+    } else if (sort === "high-low") {
+      sortOption.budget = -1; // Descending
+    } else if (sort) {
       return apiResponse(res, {
-        success: true,
-        message: "No results found",
-        data: {
-          total: 0,
-          artists: [],
-        },
+        success: false,
+        statusCode: 400,
+        message: "Invalid sort option. Use 'low-high' or 'high-low'.",
       });
     }
 
-    // Success response
-    return apiResponse(res, {
-      success: true,
-      message: "Filtered artists retrieved successfully",
-      data: {
-        total: artists.length,
-        artists,
-      },
-    });
+    // Fetch artists with the constructed query
+    const artists = await ArtistProfile.find(query)
+      .select("artistId profileImageUrl artistType artistSubType instrument budget performanceUrlId isShortlisted")
+      .sort(sortOption);
 
+    if (artists.length === 0) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 404,
+        message: "No artists found matching the criteria.",
+      });
+    }
+
+    return apiResponse(res, {
+      statusCode: 200,
+      message: "Artists filtered successfully.",
+      data: artists,
+    });
   } catch (err) {
-    console.error("Error filtering artists:", err);
+    console.error("Filter Artists Error:", err.message);
     return apiResponse(res, {
       success: false,
-      message: "Failed to filter artists",
-      data: { error: err.message },
       statusCode: 500,
+      message: "Server error",
     });
   }
 };

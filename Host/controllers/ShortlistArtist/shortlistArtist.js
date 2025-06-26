@@ -117,3 +117,62 @@ exports.getShortlistedArtists = async (req, res) => {
     });
   }
 };
+
+
+
+exports.removeShortlistArtist = async (req, res) => {
+  try {
+    const hostId = req.user.hostId;
+    const { artistId } = req.params;
+
+    if (!hostId || !artistId) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "hostId or artistId missing.",
+      });
+    }
+
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(artistId)) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "Invalid artistId format.",
+      });
+    }
+
+    // Check if the artist is shortlisted by the host
+    const shortlistEntry = await Shortlist.findOne({ hostId, artistId });
+
+    if (!shortlistEntry) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 404,
+        message: "Artist is not shortlisted.",
+      });
+    }
+
+    // Remove the shortlist entry
+    await Shortlist.deleteOne({ hostId, artistId });
+
+    // Update artist profile
+    const artist = await ArtistProfile.findOne({ artistId });
+    if (artist) {
+      artist.isShortlisted = false;
+      await artist.save();
+    }
+
+    return apiResponse(res, {
+      statusCode: 200,
+      message: "Artist successfully removed from shortlist.",
+    });
+  } catch (err) {
+    console.error("Remove Shortlist Error:", err);
+    return apiResponse(res, {
+      success: false,
+      statusCode: 500,
+      message: "Server error",
+    });
+  }
+};
