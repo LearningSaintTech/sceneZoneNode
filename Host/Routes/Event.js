@@ -1,6 +1,6 @@
 const {
   createEvent,
-  getAllEvents,
+  getAllEventsByHostId,
   getEventById,
   updateEvent,
   deleteEvent,
@@ -21,7 +21,7 @@ router.post(
   createEvent
 );
 
-router.get("/get-all-events", authMiddleware(["host", "artist"]), getAllEvents);
+router.get("/get-all-events", authMiddleware(["host", "artist"]), getAllEventsByHostId);
 
 router.get(
   "/get-event/:id",

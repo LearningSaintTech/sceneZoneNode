@@ -436,6 +436,7 @@ exports.getArtistProfile= async (req, res) => {
 
     // Fetch profile based on artistId from req.user
     const profile = await ArtistProfile.findOne({ artistId })
+      .populate("artistId")
       .populate("performanceUrlId", "venueName genre videoUrl")
       .populate("AssignedEvents", "eventName date venue");
 

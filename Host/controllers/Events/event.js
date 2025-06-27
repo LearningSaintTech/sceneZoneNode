@@ -1,4 +1,4 @@
-const Event = require("../../models/Events/event");
+ const Event = require("../../models/Events/event");
 const EventInvitation = require("../../models/InviteArtist/inviteArtist");
 const { uploadImage, deleteImage, deleteFromS3 } = require("../../../utils/s3Functions");
 const HostProfile = require("../../models/Profile/profile");
@@ -263,17 +263,20 @@ exports.createEvent = async (req, res) => {
   }
 };
 
-// GET All Events
-exports.getAllEvents = async (req, res) => {
+// GET Events by Host ID
+exports.getAllEventsByHostId = async (req, res) => {
   try {
-    const events = await Event.find().populate("assignedArtists");
+    const hostId = req.user.hostId; // or req.user.userId, depending on your auth setup
+
+    const events = await Event.find({ hostId }).populate("assignedArtists");
+
     return apiResponse(res, {
       success: true,
       message: "Events fetched successfully",
       data: events,
     });
   } catch (error) {
-    console.error("Get all events error:", error);
+    console.error("Get all events by hostId error:", error);
     return apiResponse(res, {
       success: false,
       message: "Failed to fetch events",
@@ -282,6 +285,7 @@ exports.getAllEvents = async (req, res) => {
     });
   }
 };
+
 
 // GET Single Event by ID
 exports.getEventById = async (req, res) => {
