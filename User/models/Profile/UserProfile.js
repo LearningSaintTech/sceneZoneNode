@@ -6,21 +6,7 @@ const userProfileSchema = new mongoose.Schema({
     ref: "UserAuthentication",
     required: true,
   },
-  fullName: {
-    type: String,
-    required: true,
-  },
-  mobileNumber: {
-    type: Number,
-    required: true,
-    validate: {
-      validator: function (v) {
-        return /^[0-9]{10}$/.test(v.toString());
-      },
-      message: (props) =>
-        `${props.value} is not a valid 10-digit mobile number!`,
-    },
-  },
+
   email: {
     type: String,
     required: true,
@@ -29,16 +15,26 @@ const userProfileSchema = new mongoose.Schema({
       "Please fill a valid email address",
     ],
   },
+
+  isEmailVerified: {
+    type: Boolean,
+    default: false,
+  },
+
   address: {
     type: String,
     required: true,
   },
-  profileImageUrl:{
+
+  profileImageUrl: {
     type: String,
   },
+
   dob: {
     type: Date,
   },
+
+  // Uncomment if needed later
   // isProfile: {
   //   type: Boolean,
   //   default: false,

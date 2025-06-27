@@ -7,55 +7,101 @@ const { apiResponse } = require("../../../utils/apiResponse");
 
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-exports.emailSendOtp = async (req, res) => {
-  const { email } = req.body;
+exports.emailNumberSendOtp = async (req, res) => {
+  const { email, mobileNumber } = req.body;
+
+  if (!email && !mobileNumber) {
+    return apiResponse(res, {
+      success: false,
+      message: "Either email or mobileNumber is required",
+      statusCode: 400,
+    });
+  }
 
   try {
-    const profile = await ArtistProfile.findOne({ email });
-    if (!profile) {
-      return apiResponse(res, {
-        success: false,
-        message: "Email not found in ArtistProfile.Please create Profile First",
-        statusCode: 404,
-      });
+    let otpCode;
+    let artistProfile;
+    let artistAuth;
+
+    if (email) {
+      artistProfile = await ArtistProfile.findOne({ email });
+      if (!artistProfile) {
+        return apiResponse(res, {
+          success: false,
+          message: "Email not found in ArtistProfile",
+          statusCode: 404,
+        });
+      }
     }
 
-    const otpCode = generateOTP();
-    await Otp.deleteMany({ email });
+    if (mobileNumber) {
+      artistAuth = await artist.findOne({ mobileNumber });
+      if (!artistAuth) {
+        return apiResponse(res, {
+          success: false,
+          message: "Mobile number not found in Artist",
+          statusCode: 404,
+        });
+      }
+    }
+
+    otpCode = generateOTP();
+
+    const deleteQuery = {};
+    if (email) deleteQuery.email = email;
+    if (mobileNumber) deleteQuery.mobileNumber = mobileNumber;
+    await Otp.deleteMany({ $or: [deleteQuery] });
 
     const otp = new Otp({
-      email,
+      email: email || artistProfile?.email,
+      mobileNumber: mobileNumber || artistAuth?.mobileNumber,
       code: otpCode,
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
     await otp.save();
 
-    sendEmail(
-      email,
-      "Your OTP Code",
-      `Your OTP is ${otpCode}. It expires in 5 minutes.`
-    );
+    if (email) {
+      await sendEmail(
+        email,
+        "Your OTP Code",
+        `Your OTP is ${otpCode}. It expires in 5 minutes.`
+      );
+    }
 
     return apiResponse(res, {
-      message: "OTP sent to artist email",
-      data: { otp: otpCode }, // For testing only
+      success: true,
+      message: email ? "OTP sent to artist email" : "OTP generated for mobile number",
+      data: { otp: otpCode }, // Remove in production
+      statusCode: 200,
     });
   } catch (error) {
     console.error("Send Artist OTP error:", error);
     return apiResponse(res, {
       success: false,
       message: "Failed to send OTP",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
-exports.verifyEmailOtp = async (req, res) => {
-  const { email, code } = req.body;
+exports.verifyEmailNumberOtp = async (req, res) => {
+  const { email, mobileNumber, code } = req.body;
+
+  if (!email && !mobileNumber) {
+    return apiResponse(res, {
+      success: false,
+      message: "Either email or mobileNumber is required",
+      statusCode: 400,
+    });
+  }
 
   try {
-    const otpRecord = await Otp.findOne({ email, code });
+    const query = { code };
+    if (email) query.email = email;
+    if (mobileNumber) query.mobileNumber = mobileNumber;
+
+    const otpRecord = await Otp.findOne(query);
     if (!otpRecord) {
       return apiResponse(res, {
         success: false,
@@ -73,16 +119,22 @@ exports.verifyEmailOtp = async (req, res) => {
       });
     }
 
-    const profile = await ArtistProfile.findOne({ email });
-    if (!profile) {
-      return apiResponse(res, {
-        success: false,
-        message: "ArtistProfile not found",
-        statusCode: 404,
-      });
+    let user;
+    let profile;
+    if (email) {
+      profile = await ArtistProfile.findOne({ email });
+      if (!profile) {
+        return apiResponse(res, {
+          success: false,
+          message: "ArtistProfile not found",
+          statusCode: 404,
+        });
+      }
+      user = await artist.findById(profile.artistId);
+    } else if (mobileNumber) {
+      user = await artist.findOne({ mobileNumber });
     }
 
-    const user = await artist.findById(profile.artistId);
     if (!user) {
       return apiResponse(res, {
         success: false,
@@ -91,39 +143,57 @@ exports.verifyEmailOtp = async (req, res) => {
       });
     }
 
-    user.isEmailVerified = true;
+    if (email) {
+      profile.isEmailVerified = true;
+    } else if (mobileNumber) {
+      user.isMobileVerified = true;
+    }
     await user.save();
     await Otp.deleteOne({ _id: otpRecord._id });
 
     return apiResponse(res, {
-      message: "Artist email verified successfully",
       success: true,
+      message: email ? "Artist email verified successfully" : "Artist mobile number verified successfully",
     });
   } catch (error) {
     console.error("Verify Artist OTP error:", error);
     return apiResponse(res, {
       success: false,
       message: "OTP verification failed",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
 exports.setNewPassword = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, mobileNumber, password } = req.body;
+
+  if (!email && !mobileNumber) {
+    return apiResponse(res, {
+      success: false,
+      message: "Either email or mobileNumber is required",
+      statusCode: 400,
+    });
+  }
 
   try {
-    const profile = await ArtistProfile.findOne({ email });
-    if (!profile) {
-      return apiResponse(res, {
-        success: false,
-        message: "Profile with this email not found",
-        statusCode: 404,
-      });
+    let user;
+    let profile;
+    if (email) {
+      profile = await ArtistProfile.findOne({ email });
+      if (!profile) {
+        return apiResponse(res, {
+          success: false,
+          message: "Profile with this email not found",
+          statusCode: 404,
+        });
+      }
+      user = await artist.findById(profile.artistId);
+    } else if (mobileNumber) {
+      user = await artist.findOne({ mobileNumber });
     }
 
-    const user = await artist.findById(profile.artistId);
     if (!user) {
       return apiResponse(res, {
         success: false,
@@ -132,7 +202,7 @@ exports.setNewPassword = async (req, res) => {
       });
     }
 
-    if (!user.isEmailVerified) {
+    if (email && !profile.isEmailVerified) {
       return apiResponse(res, {
         success: false,
         message: "Email is not verified",
@@ -140,21 +210,29 @@ exports.setNewPassword = async (req, res) => {
       });
     }
 
+    if (mobileNumber && !user.isMobileVerified) {
+      return apiResponse(res, {
+        success: false,
+        message: "Mobile number is not verified",
+        statusCode: 400,
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     user.password = hashedPassword;
-    user.isEmailVerified = false; // reset after password change
+    
     await user.save();
 
     return apiResponse(res, {
-      message: "Artist password updated successfully",
       success: true,
+      message: "Artist password updated successfully",
     });
   } catch (error) {
     console.error("Set Artist Password error:", error);
     return apiResponse(res, {
       success: false,
       message: "Failed to update password",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
   }

@@ -17,6 +17,14 @@ exports.signup = async (req, res) => {
   const { fullName, mobileNumber, password, isRememberMe } = req.body;
 
   try {
+    // Validate input
+    if (!fullName || !mobileNumber || !password) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "Full name, mobile number, and password are required",
+      });
+    }
 
     // Check if number exists in Host or Artist Auth collections
     const hostExists = await HostAuth.findOne({ mobileNumber });
@@ -24,7 +32,7 @@ exports.signup = async (req, res) => {
       return apiResponse(res, {
         success: false,
         statusCode: 400,
-        message: "This mobile number is already registered as a Host.Use different number",
+        message: "This mobile number is already registered as a Host. Use a different number",
       });
     }
 
@@ -33,51 +41,58 @@ exports.signup = async (req, res) => {
       return apiResponse(res, {
         success: false,
         statusCode: 400,
-        message: "This mobile number is already registered as an Artist  Use different number",
+        message: "This mobile number is already registered as an Artist. Use a different number",
       });
     }
-    // Fix: search by mobileNumber
-    const existingUser = await User.findOne({ mobileNumber }); // Consistency in field name
 
-    // Case: Already registered and verified
-    if (existingUser && existingUser.isVerified) {
-      return res
-        .status(400)
-        .json({ message: "Phone Number already registered and verified" });
+    // Check if user exists
+    const existingUser = await User.findOne({ mobileNumber });
+    if (existingUser && existingUser.isMobileVerified) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "Phone number already registered and verified",
+      });
     }
 
     let user;
-    if (existingUser && !existingUser.isVerified) {
+    if (existingUser && !existingUser.isMobileVerified) {
+      // Update existing unverified user
       existingUser.fullName = fullName;
       existingUser.mobileNumber = mobileNumber;
-      if (password) {
-        existingUser.password = await bcrypt.hash(password, 10); // Hash password
-      }
+      existingUser.password = await bcrypt.hash(password, 10);
+      existingUser.isRememberMe = isRememberMe || false;
       user = await existingUser.save();
     } else {
-      const hashedPassword = await bcrypt.hash(password, 10); // Hash password
+      // Create new user
+      const hashedPassword = await bcrypt.hash(password, 10);
       user = new User({
         fullName,
         mobileNumber,
-        password: hashedPassword, // Save hashed password
+        password: hashedPassword,
+        isRememberMe: isRememberMe || false,
       });
       await user.save();
     }
 
-    // Generate new OTP
+    // Generate OTP
     const otpCode = generateOTP();
-
-    // Remove previous OTPs for this mobile number if any
     await Otp.deleteMany({ mobileNumber });
-
     const otp = new Otp({
-      mobileNumber, // Consistent field name with User model
+      mobileNumber,
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // OTP valid for 5 minutes
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
     await otp.save();
 
-    return apiResponse(res, { message: "OTP sent", data: { otp: otpCode } });
+    // TODO: Send OTP via SMS (e.g., integrate with an SMS service)
+    console.log(`OTP for ${mobileNumber}: ${otpCode}`); // For testing only
+
+    return apiResponse(res, {
+      success: true,
+      message: "OTP sent successfully",
+      data:otp.code
+    });
   } catch (error) {
     console.error("Signup error:", error);
     return apiResponse(res, {
@@ -90,12 +105,11 @@ exports.signup = async (req, res) => {
 };
 
 exports.verifyOtp = async (req, res) => {
-  const { mobileNumber, code } = req.body; // Consistent field names
+  const { mobileNumber, code } = req.body;
 
   try {
-    // --- Check OTP record ---
-    const otpRecord = await Otp.findOne({ mobileNumber, code }); // Consistency in field names
-
+    // Validate OTP
+    const otpRecord = await Otp.findOne({ mobileNumber, code });
     if (!otpRecord) {
       return apiResponse(res, {
         success: false,
@@ -105,7 +119,7 @@ exports.verifyOtp = async (req, res) => {
     }
 
     if (otpRecord.expiresAt < new Date()) {
-      await Otp.deleteOne({ _id: otpRecord._id }); // clean up expired OTP
+      await Otp.deleteOne({ _id: otpRecord._id });
       return apiResponse(res, {
         success: false,
         message: "OTP has expired",
@@ -113,13 +127,8 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // --- Verify user ---
-    const user = await User.findOneAndUpdate(
-      { mobileNumber }, // Consistent field names
-      { isVerified: true },
-      { new: true }
-    );
-
+    // Find and update user
+    const user = await User.findOne({ mobileNumber });
     if (!user) {
       return apiResponse(res, {
         success: false,
@@ -128,17 +137,34 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // --- Clean up OTP after verification ---
+    // if (user.isMobileVerified) {
+    //   return apiResponse(res, {
+    //     success: false,
+    //     message: "Mobile number already verified",
+    //     statusCode: 400,
+    //   });
+    // }
+
+    // Update verification status
+    user.isMobileVerified = true;
+    user.isVerified = true; // Set to true if mobile verification is the only step
+    await user.save();
+
+    // Clean up OTP
     await Otp.deleteOne({ _id: otpRecord._id });
 
-    // --- Generate JWT token ---
+    // Generate JWT token
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, {
       expiresIn: "24h",
     });
 
+    // Set token in response header
+    res.setHeader("Authorization", `Bearer ${token}`);
+
     return apiResponse(res, {
-      message: "Phone Number verified successfully",
-      data: { token, user },
+      success: true,
+      message: "Mobile number verified successfully",
+      data: { user: await User.findById(user._id).select("-password") },
     });
   } catch (error) {
     console.error("OTP verification error:", error);
@@ -284,20 +310,66 @@ exports.loginWithPassword = async (req, res) => {
       });
     }
 
-    // Generate JWT token
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, {
-      expiresIn: "24h",
-    });
+  expiresIn: "24h",
+});
 
-    return apiResponse(res, {
-      message: "Login successful",
-      data: { token, user },
-    });
+// Set token in response header
+res.setHeader("Authorization", `Bearer ${token}`);
+
+return apiResponse(res, {
+  message: "Login successful",
+  data: { user }, // You can still include `token` here if you want
+});
   } catch (error) {
     console.error("Login with password error:", error);
     return apiResponse(res, {
       success: false,
       message: "Login failed",
+      error: error.message,
+      statusCode: 500,
+    });
+  }
+};
+
+exports.getUser = async (req, res) => {
+  try {
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return apiResponse(res, {
+        success: false,
+        message: "Authorization token missing",
+        statusCode: 401,
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId;
+
+    // Fetch user from database
+    const user = await User.findById(userId).select("-password"); // Exclude password
+
+    if (!user) {
+      return apiResponse(res, {
+        success: false,
+        message: "User not found",
+        statusCode: 404,
+      });
+    }
+
+    return apiResponse(res, {
+      message: "User fetched successfully",
+      data: { user },
+    });
+  } catch (error) {
+    console.error("Get user error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to fetch user",
       error: error.message,
       statusCode: 500,
     });

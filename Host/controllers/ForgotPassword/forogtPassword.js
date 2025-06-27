@@ -1,76 +1,102 @@
-const Host = require("../../models/Auth/Auth"); // Correct model name
+const Host = require("../../models/Auth/Auth");
 const Otp = require("../../models/OTP/OTP");
-const jwt = require("jsonwebtoken");
-const HostProfile = require("../../models/Profile/profile");
-const bcrypt = require('bcryptjs');
-const {sendEmail} = require("../../../utils/emailService");
+const bcrypt = require("bcryptjs");
+const { sendEmail } = require("../../../utils/emailService");
 const { apiResponse } = require("../../../utils/apiResponse");
-
-
 
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-exports.emailSendOtp = async (req, res) => {
-  const { email } = req.body;
-  console.log("email",email);
+exports.emailNumberSendOtp = async (req, res) => {
+  const { email, mobileNumber } = req.body;
+
+  // Validate that at least one of email or mobileNumber is provided
+  if (!email && !mobileNumber) {
+    return apiResponse(res, {
+      success: false,
+      message: "Either email or mobileNumber is required",
+      statusCode: 400,
+    });
+  }
 
   try {
-    //  Validate that email exists in HostProfile
-    const host = await HostProfile.findOne({ email });
-    console.log("11",host)
+    let otpCode;
+    let host;
+
+    // Check if user exists with provided email or mobileNumber
+    const query = {};
+    if (email) query.email = email;
+    if (mobileNumber) query.mobileNumber = mobileNumber;
+    
+    host = await Host.findOne({ $or: [query] });
     if (!host) {
       return apiResponse(res, {
         success: false,
-        message: "Email is not registered as a Host",
+        message: "Email or mobile number not found",
         statusCode: 404,
       });
     }
 
-    //  Generate new OTP
-    const otpCode = generateOTP();
+    // Generate OTP
+    otpCode = generateOTP();
 
-    //  Remove existing OTPs
-    await Otp.deleteMany({ email });
+    // Delete existing OTPs
+    await Otp.deleteMany({ $or: [{ email }, { mobileNumber }] });
 
-    // Save new OTP
+    // Save OTP to database
     const otp = new Otp({
-      email,
+      email: email || host.email,
+      mobileNumber: mobileNumber || host.mobileNumber,
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
     await otp.save();
 
-    //  Send email using utility
-    sendEmail(
-      email,
-      "Your OTP Code",
-      `Your OTP code is ${otpCode}. It will expire in 5 minutes.`
-    );
+    // If email is provided, send OTP via email
+    if (email) {
+      await sendEmail(
+        email,
+        "Your OTP Code",
+        `Your OTP is ${otpCode}. It expires in 5 minutes.`
+      );
+    }
 
+    // Return OTP in response (remove otpCode from response in production)
     return apiResponse(res, {
-      message: "OTP sent to email",
-      data: { otp: otpCode }, // ⚠️ For testing only
+      success: true,
+      message: email ? "OTP sent to host email" : "OTP generated for mobile number",
+      data: { otp: otpCode }, // Remove in production
+      statusCode: 200,
     });
   } catch (error) {
-    console.error("Email OTP error:", error);
+    console.error("Send OTP error:", error);
     return apiResponse(res, {
       success: false,
-      message: "Failed to send OTP to email",
-      data: { error: error.message },
+      message: "Failed to send OTP",
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
+exports.verifyEmailNumberOtp = async (req, res) => {
+  const { email, mobileNumber, code } = req.body;
 
-
-exports.verifyEmailOtp = async (req, res) => {
-  const { email, code } = req.body;
+  // Validate that at least one of email or mobileNumber is provided
+  if (!email && !mobileNumber) {
+    return apiResponse(res, {
+      success: false,
+      message: "Either email or mobileNumber is required",
+      statusCode: 400,
+    });
+  }
 
   try {
-    const otpRecord = await Otp.findOne({ email, code });
+    // Build query to find OTP record
+    const query = { code };
+    if (email) query.email = email;
+    if (mobileNumber) query.mobileNumber = mobileNumber;
 
-
+    const otpRecord = await Otp.findOne(query);
     if (!otpRecord) {
       return apiResponse(res, {
         success: false,
@@ -78,7 +104,6 @@ exports.verifyEmailOtp = async (req, res) => {
         statusCode: 400,
       });
     }
-
 
     if (otpRecord.expiresAt < new Date()) {
       await Otp.deleteOne({ _id: otpRecord._id });
@@ -89,33 +114,35 @@ exports.verifyEmailOtp = async (req, res) => {
       });
     }
 
-
-
-    const profile = await HostProfile.findOne({ email });
-    if (!profile) {
-      return apiResponse(res, {
-        success: false,
-        message: "Email not found in profile",
-        statusCode: 404,
-      });
+    let user;
+    if (email) {
+      user = await Host.findOne({ email });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "Host not found",
+          statusCode: 404,
+        });
+      }
+      user.isEmailVerified = true;
+    } else if (mobileNumber) {
+      user = await Host.findOne({ mobileNumber });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "Host not found",
+          statusCode: 404,
+        });
+      }
+      user.isMobileVerified = true;
     }
 
-    const user = await Host.findById(profile.hostId);
-    if (!user) {
-      return apiResponse(res, {
-        success: false,
-        message: "Host not found",
-        statusCode: 404,
-      });
-    }
-
-    user.isEmailVerified = true;
     await user.save();
     await Otp.deleteOne({ _id: otpRecord._id });
 
     return apiResponse(res, {
-      message: "Email verified successfully",
       success: true,
+      message: email ? "Host email verified successfully" : "Host mobile number verified successfully",
     });
   } catch (error) {
     console.error("Verify OTP error:", error);
@@ -128,49 +155,66 @@ exports.verifyEmailOtp = async (req, res) => {
   }
 };
 
-
-
 exports.setNewPassword = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, mobileNumber, password } = req.body;
+
+  // Validate that at least one of email or mobileNumber is provided
+  if (!email && !mobileNumber) {
+    return apiResponse(res, {
+      success: false,
+      message: "Either email or mobileNumber is required",
+      statusCode: 400,
+    });
+  }
 
   try {
-    const profile = await HostProfile.findOne({ email });
-    if (!profile) {
-      return apiResponse(res, {
-        success: false,
-        message: "Profile with this email not found",
-        statusCode: 404,
-      });
-    }
-
-    const user = await Host.findById(profile.hostId);
-    if (!user) {
-      return apiResponse(res, {
-        success: false,
-        message: "Host not found",
-        statusCode: 404,
-      });
-    }
-
-    if (!user.isEmailVerified) {
-      return apiResponse(res, {
-        success: false,
-        message: "Email is not verified",
-        statusCode: 400,
-      });
+    let user;
+    if (email) {
+      user = await Host.findOne({ email });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "Host with this email not found",
+          statusCode: 404,
+        });
+      }
+      if (!user.isEmailVerified) {
+        return apiResponse(res, {
+          success: false,
+          message: "Email is not verified",
+          statusCode: 400,
+        });
+      }
+    } else if (mobileNumber) {
+      user = await Host.findOne({ mobileNumber });
+      if (!user) {
+        return apiResponse(res, {
+          success: false,
+          message: "Host with this mobile number not found",
+          statusCode: 404,
+        });
+      }
+      if (!user.isMobileVerified) {
+        return apiResponse(res, {
+          success: false,
+          message: "Mobile number is not verified",
+          statusCode: 400,
+        });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     user.password = hashedPassword;
-    user.isEmailVerified = false; // reset email verified flag
+    user.isEmailVerified = false; // Reset after password change
+    user.isMobileVerified = false; // Reset after password change
     await user.save();
 
     return apiResponse(res, {
-      message: "Password updated successfully",
       success: true,
+      message: "Host password updated successfully",
     });
   } catch (error) {
-    console.error("Set password error:", error);
+    console.error("Set Host Password error:", error);
     return apiResponse(res, {
       success: false,
       message: "Failed to update password",

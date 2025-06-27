@@ -1,35 +1,54 @@
+const { apiResponse } = require("../../../utils/apiResponse");
 const Event = require("../../../Host/models/Events/event");
-const {apiResponse} = require("../../../utils/apiResponse");
 
 const getFilteredEvents = async (req, res) => {
   try {
-    const { search, genre, budget, location } = req.query;
+    const { genre, budget, location, keywords } = req.body;
 
-    const query = {};
+    // Initialize the main query array for OR conditions
+    const orQueries = [];
 
-    // Search only in eventName
-    if (search) {
-      query.eventName = { $regex: search, $options: "i" };
+    // Genre filter: Support multiple genres
+    if (genre && Array.isArray(genre) && genre.length > 0) {
+      orQueries.push({ genre: { $in: genre } });
     }
 
-    // Genre filter
-    if (genre && genre.toLowerCase() !== "all") {
-      query.genre = genre;
+    // Budget filter: Support multiple budget values or ranges
+    if (budget && Array.isArray(budget) && budget.length > 0) {
+      const budgetConditions = budget.map(b => {
+        if (typeof b === "object" && b.min !== undefined && b.max !== undefined) {
+          return { budget: { $gte: b.min, $lte: b.max } };
+        }
+        return { budget: b };
+      });
+      orQueries.push({ $or: budgetConditions });
     }
 
-    // Budget filter
-    if (budget) {
-      query.budget = budget;
+    // Location filter: Support multiple locations with case-insensitive regex
+    if (location && Array.isArray(location) && location.length > 0) {
+      orQueries.push({
+        venue: { $in: location.map(loc => new RegExp(loc, "i")) }
+      });
     }
 
-    // Location filter 
-    if (location) {
-      query.venue = { $regex: location, $options: "i" };
+    // Keyword search in eventName, about, and venue
+    if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+      const keywordConditions = keywords.map(keyword => ({
+        $or: [
+          { eventName: { $regex: keyword, $options: "i" } },
+          { about: { $regex: keyword, $options: "i" } },
+          { venue: { $regex: keyword, $options: "i" } },
+        ]
+      }));
+      orQueries.push(...keywordConditions);
     }
+
+    // Final query: Combine all conditions with OR
+    const query = orQueries.length > 0 ? { $or: orQueries } : {};
 
     const events = await Event.find(query);
 
-       if (!events || events.length === 0) {
+    if (!events || events.length === 0) {
       return apiResponse(res, {
         success: false,
         message: "No results found",
@@ -38,8 +57,6 @@ const getFilteredEvents = async (req, res) => {
       });
     }
 
-
-    
     return apiResponse(res, {
       success: true,
       message: "Filtered events fetched successfully",

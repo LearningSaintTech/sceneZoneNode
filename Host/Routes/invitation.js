@@ -5,7 +5,7 @@ const {
 
 } = require("../controllers/InviteArtist/inviteArtist");
 const {
-  respondToApplication,
+  updateEventApplicationStatus,
 } = require("../controllers/RespondToApplication/applicationRespond");
 const { authMiddleware } = require("../../middlewares/authMiddleware");
 
@@ -14,7 +14,7 @@ router.post("/send-invitation", authMiddleware(["host"]), sendEventInvitation);
 router.post(
   "/respond-to-application",
   authMiddleware(["host"]),
-  respondToApplication
+  updateEventApplicationStatus
 );
 
 module.exports = router;

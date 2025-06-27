@@ -1,8 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const { authMiddleware } = require("../../middlewares/authMiddleware");
-const { getFilteredEvents } = require("../controllers/Filter/filter");
+const { getAllEventsForArtist } = require("./../controllers/event");
 
-router.get("/filter-events", authMiddleware(["artist", "user", "admin"]), getFilteredEvents);
+
+router.get(
+  "/get-all-events-artist",
+  authMiddleware(["artist"]),
+  getAllEventsForArtist
+);
 
 module.exports = router;

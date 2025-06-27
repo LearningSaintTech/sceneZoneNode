@@ -1,24 +1,23 @@
-const Host = require("../../models/Auth/Auth"); // Correct model name
+const Host = require("../../models/Auth/Auth");
 const Otp = require("../../models/OTP/OTP");
 const jwt = require("jsonwebtoken");
 const HostProfile = require("../../models/Profile/profile");
-const bcrypt = require('bcryptjs');
+const bcrypt = require("bcryptjs");
 const ArtistAuth = require("../../../Artist/models/Auth/Auth");
 const UserAuth = require("../../../User/models/Auth/Auth");
 const { apiResponse } = require("../../../utils/apiResponse");
+const { uploadImage, deleteImage } = require("../../../utils/s3Functions");
 
 require("dotenv").config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-// signup
+// Signup
 exports.signup = async (req, res) => {
-  console.log("signupp hitted");
   const { fullName, mobileNumber, location, password, isRememberMe } = req.body;
 
   try {
-
     // Check if number exists in Artist or User Auth collections
     const artistExists = await ArtistAuth.findOne({ mobileNumber });
     if (artistExists) {
@@ -38,75 +37,69 @@ exports.signup = async (req, res) => {
       });
     }
 
-    // Fix: search by mobileNumber
-    const existingUser = await Host.findOne({ mobileNumber }); // Consistency in field name
+    const existingUser = await Host.findOne({ mobileNumber });
 
-    // Case: Already registered and verified
     if (existingUser && existingUser.isVerified) {
       return apiResponse(res, {
         success: false,
-        message: "Phone Number already registered and verified",
         statusCode: 400,
+        message: "Phone Number already registered and verified",
       });
     }
 
     let user;
     if (existingUser && !existingUser.isVerified) {
-      // Case: User exists but not verified → update user details
       existingUser.fullName = fullName;
       existingUser.mobileNumber = mobileNumber;
-      existingUser.location = location; // Added location field
+      existingUser.location = location;
       if (password) {
-        existingUser.password = await bcrypt.hash(password, 10); // Hash password
+        existingUser.password = await bcrypt.hash(password, 10);
       }
       existingUser.isRememberMe = isRememberMe;
       user = await existingUser.save();
     } else {
       const hashedPassword = await bcrypt.hash(password, 10);
-      // Case: Fresh new user
       user = new Host({
         fullName,
         mobileNumber,
-        location, // Added location field
+        location,
         password: hashedPassword,
         isRememberMe,
       });
       await user.save();
     }
 
-    // Generate new OTP
     const otpCode = generateOTP();
-
-    // Remove previous OTPs for this mobile number if any
     await Otp.deleteMany({ mobileNumber });
 
     const otp = new Otp({
-      mobileNumber, // Consistent field name with User model
+      mobileNumber,
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // OTP valid for 5 minutes
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
     await otp.save();
 
     return apiResponse(res, {
-      message: "OTP sent",
-      data: { otp: otpCode }, // Return in `data` field
+      success: true,
+      message: "OTP sent successfully",
+      data: { otp: otpCode },
     });
   } catch (error) {
     console.error("Signup error:", error);
     return apiResponse(res, {
       success: false,
       message: "Signup failed",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
+// Verify OTP
 exports.verifyOtp = async (req, res) => {
-  const { mobileNumber,code } = req.body;
+  const { mobileNumber, code } = req.body;
 
   try {
-    // --- Find OTP ---
     const otpRecord = await Otp.findOne({ mobileNumber, code });
 
     if (!otpRecord) {
@@ -126,10 +119,9 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // --- Verify the host ---
     const user = await Host.findOneAndUpdate(
       { mobileNumber },
-      { isVerified: true },
+      { isVerified: true, isMobileVerified: true },
       { new: true }
     );
 
@@ -141,52 +133,37 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // --- Create profile if not already exists ---
-    const existingProfile = await HostProfile.findOne({ hostId: user._id });
-    if (!existingProfile) {
-      const newProfile = new HostProfile({
-        hostId: user._id,
-        fullName: user.fullName,
-        mobileNumber: user.mobileNumber,
-        location: user.location,
-        email: null,
-        profileImageUrl: null,
-        isProfile: true,
-      });
-
-      await newProfile.save();
-    }
-
-    // --- Clean up OTP ---
     await Otp.deleteOne({ _id: otpRecord._id });
 
-    // --- Generate token ---
-    const token = jwt.sign({ hostId: user._id, role: user.role }, JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign(
+      { hostId: user._id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    res.setHeader("Authorization", `Bearer ${token}`);
 
     return apiResponse(res, {
+      success: true,
       message: "Phone Number verified successfully",
-      data: { token, user },
+      data: { user },
     });
   } catch (error) {
     console.error("OTP verification error:", error);
     return apiResponse(res, {
       success: false,
       message: "OTP verification failed",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
+// Resend OTP
 exports.resendOtp = async (req, res) => {
   const { mobileNumber, email } = req.body;
 
   try {
-    let host;
-
-    // Check for valid input
     if (!mobileNumber && !email) {
       return apiResponse(res, {
         success: false,
@@ -195,10 +172,10 @@ exports.resendOtp = async (req, res) => {
       });
     }
 
-    // Find host by mobileNumber or email
+    let user;
     if (mobileNumber) {
-      host = await Host.findOne({ mobileNumber });
-      if (!host) {
+      user = await Host.findOne({ mobileNumber });
+      if (!user) {
         return apiResponse(res, {
           success: false,
           message: "Host with this phone number does not exist",
@@ -207,8 +184,8 @@ exports.resendOtp = async (req, res) => {
       }
       await Otp.deleteMany({ mobileNumber });
     } else if (email) {
-      host = await HostProfile.findOne({ email });
-      if (!host) {
+      user = await HostProfile.findOne({ email });
+      if (!user) {
         return apiResponse(res, {
           success: false,
           message: "Host with this email does not exist",
@@ -218,7 +195,6 @@ exports.resendOtp = async (req, res) => {
       await Otp.deleteMany({ email });
     }
 
-    // Generate and save new OTP
     const otpCode = generateOTP();
     const otpData = {
       code: otpCode,
@@ -232,6 +208,7 @@ exports.resendOtp = async (req, res) => {
     await otp.save();
 
     return apiResponse(res, {
+      success: true,
       message: "OTP resent successfully",
       data: { otp: otpCode },
     });
@@ -240,18 +217,17 @@ exports.resendOtp = async (req, res) => {
     return apiResponse(res, {
       success: false,
       message: "Resending OTP failed",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
-
   }
-}
+};
 
+// Login
 exports.login = async (req, res) => {
   const { mobileNumber } = req.body;
 
   try {
-    // Check if user exists
     const user = await Host.findOne({ mobileNumber });
     if (!user) {
       return apiResponse(res, {
@@ -261,20 +237,19 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Delete existing OTPs for this number
-    await Otp.deleteMany({ mobileNumber }); // FIXED: field name
+    await Otp.deleteMany({ mobileNumber });
 
-    // Generate new OTP
     const otpCode = generateOTP();
     const otp = new Otp({
-      mobileNumber, // FIXED: field name
+      mobileNumber,
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
     await otp.save();
 
     return apiResponse(res, {
+      success: true,
       message: "OTP sent successfully",
       data: { otp: otpCode },
     });
@@ -283,19 +258,17 @@ exports.login = async (req, res) => {
     return apiResponse(res, {
       success: false,
       message: "Login failed",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
-
-
+// Login with Password
 exports.loginFromPassword = async (req, res) => {
   const { mobileNumber, password } = req.body;
 
   try {
-    // Find user by mobile number
     const user = await Host.findOne({ mobileNumber });
     if (!user) {
       return apiResponse(res, {
@@ -305,7 +278,6 @@ exports.loginFromPassword = async (req, res) => {
       });
     }
 
-    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return apiResponse(res, {
@@ -315,24 +287,172 @@ exports.loginFromPassword = async (req, res) => {
       });
     }
 
-    // Generate JWT token
-    const token = jwt.sign({ hostId: user._id, role: user.role }, JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign(
+      { hostId: user._id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    res.setHeader("Authorization", `Bearer ${token}`);
 
     return apiResponse(res, {
+      success: true,
       message: "Login successful",
-      data: { token, user },
+      data: { user },
     });
   } catch (error) {
-    console.error("Login from password error:", error);
+    console.error("Login with password error:", error);
     return apiResponse(res, {
       success: false,
       message: "Login failed",
-      data: { error: error.message },
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
+// Get Host
+exports.getHost = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return apiResponse(res, {
+        success: false,
+        message: "Authorization token missing",
+        statusCode: 401,
+      });
+    }
 
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const hostId = decoded.hostId;
+
+    const user = await Host.findById(hostId).select("-password");
+
+    if (!user) {
+      return apiResponse(res, {
+        success: false,
+        message: "Host not found",
+        statusCode: 404,
+      });
+    }
+
+    return apiResponse(res, {
+      success: true,
+      message: "Host fetched successfully",
+      data: { user },
+    });
+  } catch (error) {
+    console.error("Get host error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to fetch host",
+      error: error.message,
+      statusCode: 500,
+    });
+  }
+};
+
+// Update Host
+exports.updateHost = async (req, res) => {
+  try {
+    const { fullName, location, email, mobileNumber } = req.body;
+    const hostId = req.user.hostId; // From authMiddleware
+
+    const updateData = {};
+    if (fullName) updateData.fullName = fullName;
+    if (location) updateData.location = location;
+    if (email) updateData.email = email;
+    if (mobileNumber) updateData.mobileNumber = mobileNumber;
+
+    // Handle profile image update
+    if (req.file) {
+      console.log("Uploading new profile image:", req.file.originalname);
+      const newFileName = `Host/profileImage/host_${hostId}_${Date.now()}-${req.file.originalname}`;
+      const newProfileImageUrl = await uploadImage(req.file, newFileName);
+
+      // Fetch current user to check for existing profile image
+      const currentUser = await Host.findById(hostId);
+      if (!currentUser) {
+        return apiResponse(res, {
+          success: false,
+          message: "Host not found",
+          statusCode: 404,
+        });
+      }
+
+      // Delete old profile image if it exists
+      if (currentUser.profileImageUrl) {
+        try {
+          const oldFileName = currentUser.profileImageUrl.split(".com/")[1];
+          await deleteImage(oldFileName);
+        } catch (error) {
+          console.warn("Failed to delete old profile image:", error.message);
+        }
+      }
+
+      updateData.profileImageUrl = newProfileImageUrl;
+    }
+
+    const user = await Host.findByIdAndUpdate(
+      hostId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!user) {
+      return apiResponse(res, {
+        success: false,
+        message: "Host not found",
+        statusCode: 404,
+      });
+    }
+
+    return apiResponse(res, {
+      success: true,
+      message: "Host updated successfully",
+      data: { user },
+    });
+  } catch (error) {
+    console.error("Update host error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to update host",
+      error: error.message,
+      statusCode: error.message.includes("Only images") ? 400 : 500,
+    });
+  }
+};
+
+// Delete Host
+exports.deleteHost = async (req, res) => {
+  try {
+    const hostId = req.user.hostId; // Use hostId from authMiddleware
+
+    const user = await Host.findByIdAndDelete(hostId);
+
+    if (!user) {
+      return apiResponse(res, {
+        success: false,
+        message: "Host not found",
+        statusCode: 404,
+      });
+    }
+
+    // Clean up related OTP records
+    await Otp.deleteMany({ mobileNumber: user.mobileNumber });
+
+    return apiResponse(res, {
+      success: true,
+      message: "Host deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete host error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to delete host",
+      error: error.message,
+      statusCode: 500,
+    });
+  }
+};

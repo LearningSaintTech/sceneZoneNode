@@ -1,24 +1,29 @@
-const artist = require("../../models/Auth/Auth"); // Correct model name
-const ArtistProfile = require("../../models/Profile/profile")
+const artist = require("../../models/Auth/Auth");
+const ArtistProfile = require("../../models/Profile/profile");
 const Otp = require("../../models/OTP/OTP");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { apiResponse } = require("../../../utils/apiResponse");
 const HostAuth = require("../../../Host/models/Auth/Auth");
 const UserAuth = require("../../../User/models/Auth/Auth");
-const mongoose=require("mongoose")
-const ArtistAuthentication=require("../../../Artist/models/Auth/Auth")
-
 require("dotenv").config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-// signup
+// Signup
 exports.signup = async (req, res) => {
   const { fullName, mobileNumber, password, isRememberMe } = req.body;
 
   try {
+    // Validate input
+    if (!fullName || !mobileNumber || !password) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: 'Full name, mobile number, and password are required',
+      });
+    }
 
     // Check if number exists in Host or User Auth collections
     const hostExists = await HostAuth.findOne({ mobileNumber });
@@ -26,7 +31,7 @@ exports.signup = async (req, res) => {
       return apiResponse(res, {
         success: false,
         statusCode: 400,
-        message: "This mobile number is already registered as a Host. Use a different number.",
+        message: 'This mobile number is already registered as a Host. Use a different number.',
       });
     }
 
@@ -35,168 +40,183 @@ exports.signup = async (req, res) => {
       return apiResponse(res, {
         success: false,
         statusCode: 400,
-        message: "This mobile number is already registered as a User. Use a different number.",
+        message: 'This mobile number is already registered as a User. Use a different number.',
       });
     }
 
-    // Fix: search by mobileNumber
-    const existingUser = await artist.findOne({ mobileNumber }); // Consistency in field name
-
-    // Case: Already registered and verified
-    if (existingUser && existingUser.isVerified) {
+    // Check if artist exists
+    const existingArtist = await artist.findOne({ mobileNumber });
+    if (existingArtist && existingArtist.isMobileVerified) {
       return apiResponse(res, {
         success: false,
-        message: "Phone Number already registered and verified",
         statusCode: 400,
+        message: 'Phone number already registered and verified',
       });
     }
 
-    let user;
-    if (existingUser && !existingUser.isVerified) {
-      existingUser.fullName = fullName;
-      existingUser.mobileNumber = mobileNumber;
-      if (password) {
-        existingUser.password = await bcrypt.hash(password, 10); // Hash password
-      }
-      user = await existingUser.save();
+    let artistUser;
+    if (existingArtist && !existingArtist.isMobileVerified) {
+      // Update existing unverified artist
+      existingArtist.fullName = fullName;
+      existingArtist.mobileNumber = mobileNumber;
+      existingArtist.password = await bcrypt.hash(password, 10);
+      existingArtist.isRememberMe = isRememberMe || false;
+      artistUser = await existingArtist.save();
     } else {
-      const hashedPassword = await bcrypt.hash(password, 10); // Hash password
-      user = new artist({
+      // Create new artist
+      const hashedPassword = await bcrypt.hash(password, 10);
+      artistUser = new artist({
         fullName,
         mobileNumber,
-        password: hashedPassword, // Save hashed password
+        password: hashedPassword,
+        isRememberMe: isRememberMe || false,
       });
-      await user.save();
+      await artistUser.save();
     }
 
-    // Generate new OTP
+    // Generate OTP
     const otpCode = generateOTP();
-
-    // Remove previous OTPs for this mobile number if any
     await Otp.deleteMany({ mobileNumber });
-
     const otp = new Otp({
-      mobileNumber, // Consistent field name with User model
+      mobileNumber,
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // OTP valid for 5 minutes
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
     await otp.save();
 
+    // TODO: Send OTP via SMS (e.g., integrate with an SMS service)
+    console.log(`OTP for ${mobileNumber}: ${otpCode}`); // For testing only
+
     return apiResponse(res, {
-      message: "OTP sent",
-      data: { otp: otpCode },
+      success: true,
+      message: 'OTP sent successfully',
+      data:otp.code
     });
   } catch (error) {
-    console.error("Signup error:", error);
+    console.error('Signup error:', error);
     return apiResponse(res, {
       success: false,
-      message: "Signup failed",
-      data: { error: error.message },
+      message: 'Signup failed',
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
+// Verify OTP
 exports.verifyOtp = async (req, res) => {
-  const { mobileNumber, code } = req.body; // Consistent field names
+  const { mobileNumber, code } = req.body;
 
   try {
-    // --- Check OTP record ---
-    const otpRecord = await Otp.findOne({ mobileNumber, code }); // Consistency in field names
-
+    // Validate OTP
+    const otpRecord = await Otp.findOne({ mobileNumber, code });
     if (!otpRecord) {
       return apiResponse(res, {
         success: false,
-        message: "Invalid OTP",
+        message: 'Invalid OTP',
         statusCode: 400,
       });
     }
 
     if (otpRecord.expiresAt < new Date()) {
-      await Otp.deleteOne({ _id: otpRecord._id }); // clean up expired OTP
+      await Otp.deleteOne({ _id: otpRecord._id });
       return apiResponse(res, {
         success: false,
-        message: "OTP has expired",
+        message: 'OTP has expired',
         statusCode: 400,
       });
     }
 
-    // --- Verify user ---
-    const user = await artist.findOneAndUpdate(
-      { mobileNumber }, // Consistent field names
-      { isVerified: true },
-      { new: true }
-    );
-
-    if (!user) {
+    // Find and update artist
+    const artistUser = await artist.findOne({ mobileNumber });
+    if (!artistUser) {
       return apiResponse(res, {
         success: false,
-        message: "User not found",
+        message: 'Artist not found',
         statusCode: 404,
       });
     }
 
-    // --- Clean up OTP after verification ---
+    // if (artistUser.isMobileVerified) {
+    //   return apiResponse(res, {
+    //     success: false,
+    //     message: 'Mobile number already verified',
+    //     statusCode: 400,
+    //   });
+    // }
+
+    // Update verification status
+    artistUser.isMobileVerified = true;
+    artistUser.isVerified = true; // Set to true if mobile verification is the only step
+    await artistUser.save();
+
+    // Clean up OTP
     await Otp.deleteOne({ _id: otpRecord._id });
 
-    // --- Generate JWT token ---
+    // Generate JWT token
     const token = jwt.sign(
-      { artistId: user._id, role: user.role },
+      { artistId: artistUser._id, role: artistUser.role },
       JWT_SECRET,
-      {
-        expiresIn: "7d",
-      }
+      { expiresIn: '24h' }
     );
 
+    // Set token in response header
+    res.setHeader('Authorization', `Bearer ${token}`);
+
     return apiResponse(res, {
-      message: "Phone verified successfully",
-      data: { token, user },
+      success: true,
+      message: 'Mobile number verified successfully',
+      data: { user: await artist.findById(artistUser._id).select('-password') },
     });
   } catch (error) {
-    console.error("OTP verification error:", error);
+    console.error('OTP verification error:', error);
     return apiResponse(res, {
       success: false,
-      message: "OTP verification failed",
-      data: { error: error.message },
+      message: 'OTP verification failed',
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
+// Resend OTP
 exports.resendOtp = async (req, res) => {
   const { mobileNumber, email } = req.body;
 
   try {
-    let user;
-
     // Check for valid input
     if (!mobileNumber && !email) {
       return apiResponse(res, {
         success: false,
-        message: "Please provide either a mobile number or an email.",
+        message: 'Please provide either a mobile number or an email.',
         statusCode: 400,
       });
     }
 
-    // Find artist by mobileNumber or email
+    let user;
     if (mobileNumber) {
       user = await artist.findOne({ mobileNumber });
       if (!user) {
         return apiResponse(res, {
           success: false,
-          message: "Artist with this phone number does not exist",
+          message: 'Artist with this phone number does not exist',
           statusCode: 404,
+        });
+      }
+      if (user.isMobileVerified) {
+        return apiResponse(res, {
+          success: false,
+          message: 'Mobile number already verified',
+          statusCode: 400,
         });
       }
       await Otp.deleteMany({ mobileNumber });
     } else if (email) {
-      console.log("emaill",email)
       user = await ArtistProfile.findOne({ email });
-      console.log("artistemaill",user)
       if (!user) {
         return apiResponse(res, {
           success: false,
-          message: "Artist with this email does not exist",
+          message: 'Artist with this email does not exist',
           statusCode: 404,
         });
       }
@@ -216,148 +236,191 @@ exports.resendOtp = async (req, res) => {
     const otp = new Otp(otpData);
     await otp.save();
 
+    // TODO: Send OTP via SMS or email (e.g., integrate with an SMS/email service)
+    console.log(`OTP for ${mobileNumber || email}: ${otpCode}`); // For testing only
+
     return apiResponse(res, {
-      message: "OTP resent successfully",
-      data: { otp: otpCode },
+      success: true,
+      message: 'OTP resent successfully',
+      data:otp.code
     });
   } catch (error) {
-    console.error("Error resending OTP:", error);
+    console.error('Error resending OTP:', error);
     return apiResponse(res, {
       success: false,
-      message: "Resending OTP failed",
-      data: { error: error.message },
+      message: 'Resending OTP failed',
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
+// Login
 exports.login = async (req, res) => {
-  console.log("111");
   const { mobileNumber } = req.body;
 
   try {
-    // Check if user exists
-    const user = await artist.findOne({ mobileNumber });
-    if (!user) {
+    // Validate input
+    if (!mobileNumber) {
       return apiResponse(res, {
         success: false,
-        message: "Phone number is not registered.Signup first",
+        message: 'Mobile number is required',
+        statusCode: 400,
+      });
+    }
+
+    // Check if artist exists
+    const artistUser = await artist.findOne({ mobileNumber });
+    if (!artistUser) {
+      return apiResponse(res, {
+        success: false,
+        message: 'Phone number is not registered. Signup first',
         statusCode: 404,
       });
     }
 
-    // Delete existing OTPs for this number
-    await Otp.deleteMany({ mobileNumber }); // FIXED: field name
+    // Delete existing OTPs
+    await Otp.deleteMany({ mobileNumber });
 
     // Generate new OTP
     const otpCode = generateOTP();
     const otp = new Otp({
-      mobileNumber, // FIXED: field name
+      mobileNumber,
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
     await otp.save();
+
+    // TODO: Send OTP via SMS
+    console.log(`OTP for ${mobileNumber}: ${otpCode}`); // For testing only
+
     return apiResponse(res, {
       success: true,
-      message: "OTP sent successfully",
-      data: { otp: otpCode },
+      message: 'OTP sent successfully',
+      data:otp.code
     });
-
   } catch (error) {
-    console.error("Login error:", error);
+    console.error('Login error:', error);
     return apiResponse(res, {
       success: false,
-      message: "Login failed",
-      data: { error: error.message },
+      message: 'Login failed',
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
-
-
+// Login with Password
 exports.loginWithPassword = async (req, res) => {
   const { mobileNumber, password } = req.body;
 
   try {
-    const user = await artist.findOne({ mobileNumber });
-    if (!user) {
+    // Validate input
+    if (!mobileNumber || !password) {
       return apiResponse(res, {
         success: false,
-        message: "Artist not found",
-        statusCode: 404,
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return apiResponse(res, {
-        success: false,
-        message: "Invalid password",
+        message: 'Mobile number and password are required',
         statusCode: 400,
       });
     }
 
+    // Find artist
+    const artistUser = await artist.findOne({ mobileNumber });
+    if (!artistUser) {
+      return apiResponse(res, {
+        success: false,
+        message: 'Artist not found',
+        statusCode: 404,
+      });
+    }
+
+    // Check if artist is verified
+    if (!artistUser.isVerified) {
+      return apiResponse(res, {
+        success: false,
+        message: 'Artist account not verified. Please verify your mobile number.',
+        statusCode: 403,
+      });
+    }
+
+    // Check password
+    const isMatch = await bcrypt.compare(password, artistUser.password);
+    if (!isMatch) {
+      return apiResponse(res, {
+        success: false,
+        message: 'Invalid password',
+        statusCode: 400,
+      });
+    }
+
+    // Generate JWT token
     const token = jwt.sign(
-      { artistId: user._id, role: user.role },
+      { artistId: artistUser._id, role: artistUser.role },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: '24h' }
     );
 
+    // Set token in response header
+    res.setHeader('Authorization', `Bearer ${token}`);
+
     return apiResponse(res, {
-      message: "Login successful",
-      data: { token, user },
+      success: true,
+      message: 'Login successful',
+      data: { user: await artist.findById(artistUser._id).select('-password') },
     });
   } catch (error) {
-    console.error("Password login error:", error);
+    console.error('Password login error:', error);
     return apiResponse(res, {
       success: false,
-      message: "Login failed",
-      data: { error: error.message },
+      message: 'Login failed',
+      error: error.message,
       statusCode: 500,
     });
   }
 };
 
-// Get Artist
-exports.getArtists = async (req, res) => {
+exports.getArtist = async (req, res) => {
   try {
-    const { artistId } = req.user;
-
-    // Validate artistId
-    if (!mongoose.isValidObjectId(artistId)) {
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return apiResponse(res, {
         success: false,
-        statusCode: 400,
-        message: "Invalid artist ID.",
+        message: 'Authorization token missing',
+        statusCode: 401,
       });
     }
 
-    // Fetch artist, excluding password
-    const artist = await ArtistAuthentication.findById(artistId).select("-password");
+    const token = authHeader.split(' ')[1];
 
-    if (!artist) {
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const artistId = decoded.artistId;
+
+    // Fetch artist
+    const artistUser = await artist.findById(artistId).select('-password');
+
+    if (!artistUser) {
       return apiResponse(res, {
         success: false,
+        message: 'Artist not found',
         statusCode: 404,
-        message: "Artist not found",
       });
     }
 
     return apiResponse(res, {
       success: true,
-      statusCode: 200,
-      message: "Artist fetched successfully",
-      data: artist,
+      message: 'Artist fetched successfully',
+      data: { user: artistUser },
     });
-  } catch (err) {
-    console.error("Get Artist Error:", err);
+  } catch (error) {
+    console.error('Get artist error:', error);
     return apiResponse(res, {
       success: false,
+      message: 'Failed to fetch artist',
+      error: error.message,
       statusCode: 500,
-      message: "Server error",
-      data: { error: err.message },
     });
   }
 };

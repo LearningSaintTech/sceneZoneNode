@@ -1,18 +1,15 @@
 const express = require("express");
 const router = express.Router();
+
 const {
- 
-  emailSendOtp,
-  verifyEmailOtp,
+  emailNumberSendOtp,
+  verifyEmailNumberOtp,
   setNewPassword,
 } = require("../controllers/ForgotPassword/forgotPassword");
 
-
-
-router.post("/email-sendOtp", emailSendOtp);
-router.post("/email-verifyOtp", verifyEmailOtp);
-router.post("/set-newpassword",setNewPassword);
-
+// Updated routes to match controller function names
+router.post("/email-number-send-otp", emailNumberSendOtp);
+router.post("/verify-email-number-otp", verifyEmailNumberOtp);
+router.post("/set-new-password", setNewPassword);
 
 module.exports = router;
-

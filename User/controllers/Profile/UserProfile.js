@@ -6,7 +6,14 @@ const { apiResponse } = require("../../../utils/apiResponse");
 exports.createUserProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { email, address, dob } = req.body; // <-- add dob here
+    const { email, address, dob,fullName,mobileNumber } = req.body; // <-- add dob here
+if (!email || !address || !dob || !fullName || !mobileNumber) {
+  return apiResponse(res, {
+    success: false,
+    message: "Missing required fields",
+    statusCode: 400,
+  });
+}
 
     // Find the user in the UserAuthentication model
     const user = await UserAuthentication.findById(userId);
@@ -54,10 +61,12 @@ exports.createUserProfile = async (req, res) => {
       });
     }
 
+        user.fullName = fullName;
+        user.mobileNumber=mobileNumber;
+
+
     const newProfile = new UserProfile({
       userId,
-      fullName: user.fullName,
-      mobileNumber: user.mobileNumber,
       email: email,
       address: address,
       dob: dob, // <-- add dob here
@@ -133,10 +142,29 @@ exports.deleteUserProfile = async (req, res) => {
 
 exports.updateUserProfile = async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const { email, address, fullName, dob } = req.body || {}; // <-- add dob here
+    const userId = req.user?.userId;
+    const { email, address, fullName, dob, mobileNumber } = req.body || {};
 
-    // Find the user profile
+    // Validate required fields
+    if (!email || !address || !fullName || !dob || !mobileNumber) {
+      return apiResponse(res, {
+        success: false,
+        message: "Missing required fields",
+        statusCode: 400,
+      });
+    }
+
+    // Find user in UserAuthentication
+    const user = await UserAuthentication.findById(userId);
+    if (!user) {
+      return apiResponse(res, {
+        success: false,
+        message: "User not found",
+        statusCode: 404,
+      });
+    }
+
+    // Find user profile
     const profile = await UserProfile.findOne({ userId });
     if (!profile) {
       return apiResponse(res, {
@@ -145,42 +173,39 @@ exports.updateUserProfile = async (req, res) => {
         statusCode: 404,
       });
     }
-    console.log(" User profile found:", profile.fullName);
 
-    // Update profile fields if provided
-    if (email) profile.email = email;
-    if (address) profile.address = address;
-    if (fullName) profile.fullName = fullName;
-    if (dob) profile.dob = dob; // <-- add dob update
+    // Update UserAuthentication fields
+    user.fullName = fullName;
+    user.mobileNumber = mobileNumber;
 
-    // Handle profile image update (optional)
+    // Update UserProfile fields
+    profile.email = email;
+    profile.address = address;
+    profile.dob = dob;
+
+    // Handle profile image update
     if (req.file) {
       console.log("Uploading new profile image:", req.file.originalname);
 
-      // Upload new profile image
-      const newFileName = `User/profileImage/user_${userId}_${Date.now()}-${
-        req.file.originalname
-      }`;
+      const newFileName = `User/profileImage/user_${userId}_${Date.now()}-${req.file.originalname}`;
       const newProfileImageUrl = await uploadImage(req.file, newFileName);
 
-      // Delete old profile image if it exists
+      // Delete old profile image
       if (profile.profileImageUrl) {
         try {
           const oldFileName = profile.profileImageUrl.split(".com/")[1];
           await deleteImage(oldFileName);
         } catch (error) {
-          console.warn(
-            `Failed to delete old profile image ${profile.profileImageUrl}:`,
-            error.message
-          );
+          console.warn("Failed to delete old profile image:", error.message);
         }
       }
 
-      // Update profile image URL
       profile.profileImageUrl = newProfileImageUrl;
     }
 
+    // Save changes
     await profile.save();
+    await user.save();
 
     return apiResponse(res, {
       message: "Profile updated successfully",
@@ -199,10 +224,30 @@ exports.updateUserProfile = async (req, res) => {
 
 exports.getUserProfile = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user?.userId;
 
-    // Find the user profile
-    const profile = await UserProfile.findOne({ userId });
+    if (!userId) {
+      return apiResponse(res, {
+        success: false,
+        message: "Unauthorized access",
+        statusCode: 401,
+      });
+    }
+
+    // Fetch user and profile in parallel
+    const [user, profile] = await Promise.all([
+      UserAuthentication.findById(userId).select("fullName mobileNumber isVerified isProfileComplete"),
+      UserProfile.findOne({ userId }),
+    ]);
+
+    if (!user) {
+      return apiResponse(res, {
+        success: false,
+        message: "User not found",
+        statusCode: 404,
+      });
+    }
+
     if (!profile) {
       return apiResponse(res, {
         success: false,
@@ -211,9 +256,21 @@ exports.getUserProfile = async (req, res) => {
       });
     }
 
+    const responseData = {
+      fullName: user.fullName,
+      mobileNumber: user.mobileNumber,
+      isVerified: user.isVerified,
+      isProfileComplete: user.isProfileComplete,
+      email: profile.email,
+      address: profile.address,
+      dob: profile.dob,
+      profileImageUrl: profile.profileImageUrl,
+    };
+
     return apiResponse(res, {
       message: "Profile fetched successfully",
-      data: profile,
+      data: responseData,
+      statusCode: 200,
     });
   } catch (error) {
     console.error("Error fetching profile:", error);
@@ -225,3 +282,4 @@ exports.getUserProfile = async (req, res) => {
     });
   }
 };
+

@@ -3,6 +3,7 @@ const { apiResponse } = require("../../../utils/apiResponse");
 const ArtistPerformanceGallery = require("../../models/Profile/performanceGalleryArtist");
 const ArtistAuthentication = require("../../models/Auth/Auth");
 const ArtistProfile = require("../../models/Profile/profile");
+const mongoose=require("mongoose")
 
 exports.createPerformanceGallery = async (req, res) => {
   try {

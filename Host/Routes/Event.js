@@ -4,6 +4,9 @@ const {
   getEventById,
   updateEvent,
   deleteEvent,
+  updateEventDiscount,
+  toggleEventGuestList,
+  getLatestEvents
 } = require("../controllers/Events/event");
 const { authMiddleware } = require("../../middlewares/authMiddleware");
 const express = require("express");
@@ -18,16 +21,16 @@ router.post(
   createEvent
 );
 
-router.get("/get-all-events", authMiddleware(["host","artist"]) ,getAllEvents);
+router.get("/get-all-events", authMiddleware(["host", "artist"]), getAllEvents);
 
 router.get(
   "/get-event/:id",
-  authMiddleware(["host","artist","user"]),
+  authMiddleware(["host", "artist", "user"]),
   getEventById
 );
 
 router.patch(
-  "/update-event/:id",
+  "/update-event/:eventId",
   authMiddleware(["host"]),
   upload.single("posterUrl"),
   updateEvent
@@ -38,5 +41,19 @@ router.delete(
   authMiddleware(["host"]),
   deleteEvent
 );
+router.patch(
+  "/update-event-discount/:eventId",
+  authMiddleware(["host"]),
+  updateEventDiscount
+);
+router.patch(
+  "/toggle-guest-list/:eventId",
+  authMiddleware(["host"]),
+  toggleEventGuestList
+);
+
+// Route to get latest events
+router.get('/latest',  authMiddleware(["user"]), getLatestEvents);
+
 
 module.exports = router;

@@ -16,8 +16,13 @@ const hostAuthenticationSchema = new mongoose.Schema({
         `${props.value} is not a valid 10-digit mobile number!`,
     },
   },
+  isMobileVerified:{
+    type:Boolean,
+    default:false
+  },
   location: {
     type: String,
+required: true,
     default:null
   },
   role: {
@@ -32,6 +37,9 @@ const hostAuthenticationSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  email:{
+    type: String,
+  },
   isEmailVerified:{
     type:Boolean,
     default:false
@@ -39,7 +47,15 @@ const hostAuthenticationSchema = new mongoose.Schema({
   isRememberMe:{
     type:Boolean,
     default:false
-  }
+  },
+  profileImageUrl: {
+    type: String,
+    default:null
+  },
+  isProfile: {
+    type: Boolean,
+    default: false,
+  },
   
 });
 

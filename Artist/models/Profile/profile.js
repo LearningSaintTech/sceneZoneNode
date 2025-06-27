@@ -21,6 +21,10 @@ const artistProfileSchema = new mongoose.Schema({
     lowercase: true,
     unique: true,
   },
+   isEmailVerified: {
+    type: Boolean,
+    default: false,
+  },
   address: {
     type: String,
     required: true,

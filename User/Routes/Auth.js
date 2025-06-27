@@ -6,13 +6,21 @@ const {
   resendOtp,
   login,
   loginWithPassword,
+  getUser
 } = require("../controllers/Auth/Auth");
 
 
+ 
+const { authMiddleware } = require("../../middlewares/authMiddleware"); // Adjust path if needed
+
+// Public routes
 router.post("/signup", signup);
 router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);
 router.post("/login", login);
 router.post("/loginFromPassword", loginWithPassword);
-module.exports = router;
 
+// Protected route (only accessible with valid token & role "user")
+router.get("/get-user", authMiddleware(["user"]), getUser);
+
+module.exports = router;

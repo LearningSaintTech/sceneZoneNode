@@ -49,16 +49,11 @@ exports.getFavouriteEvents = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    const favourites = await FavouriteEvents.find({ userId }).populate({
-      path: "eventId",
-      select: "eventName venue posterUrl", 
-    });
-
-    const events = favourites.map((fav) => fav.eventId);
+    const favourites = await FavouriteEvents.find({ userId });
 
     return apiResponse(res, {
       message: "Favourite events fetched",
-      data: events,
+      data: favourites,
       statusCode: 200,
     });
   } catch (err) {
