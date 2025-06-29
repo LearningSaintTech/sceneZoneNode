@@ -5,6 +5,79 @@ const ArtistAuthentication = require("../../models/Auth/Auth");
 const ArtistProfile = require("../../models/Profile/profile");
 const mongoose=require("mongoose")
 
+// exports.createPerformanceGallery = async (req, res) => {
+//   try {
+//     const artistId = req.user.artistId;
+//     const { venueName, genre } = req.body;
+
+//     // Validate required fields
+//     if (!venueName || !genre) {
+//       return apiResponse(res, {
+//         success: false,
+//         statusCode: 400,
+//         message: "Venue name and genre are required.",
+//       });
+//     }
+
+//     // Validate artist
+//     const artist = await ArtistAuthentication.findById(artistId);
+//     if (!artist) {
+//       return apiResponse(res, {
+//         success: false,
+//         statusCode: 404,
+//         message: "Artist not found.",
+//       });
+//     }
+
+//     if (!artist.isVerified) {
+//       return apiResponse(res, {
+//         success: false,
+//         statusCode: 400,
+//         message: "Artist not verified.",
+//       });
+//     }
+
+//     // Validate video file
+//     if (!req.file) {
+//       return apiResponse(res, {
+//         success: false,
+//         statusCode: 400,
+//         message: "Performance video is required.",
+//       });
+//     }
+
+//     // Upload video to S3
+//     const fileName = `Artist/performanceGallery/artist_${artistId}_${Date.now()}-${req.file.originalname}`;
+//     const videoUrl = await uploadImage(req.file, fileName);
+
+//     // Create new performance gallery entry
+//     const newPerformance = new ArtistPerformanceGallery({
+//       artistId,
+//       venueName: venueName.trim(),
+//       genre: genre.trim(),
+//       videoUrl,
+//     });
+
+//     await newPerformance.save();
+
+//     return apiResponse(res, {
+//       success: true,
+//       statusCode: 201,
+//       message: "Performance gallery entry created successfully.",
+//       data: newPerformance,
+//     });
+//   } catch (err) {
+//     console.error("Create Performance Gallery Error:", err);
+//     return apiResponse(res, {
+//       success: false,
+//       statusCode: 500,
+//       message: "Server error",
+//       data: { error: err.message },
+//     });
+//   }
+// };
+
+
 exports.createPerformanceGallery = async (req, res) => {
   try {
     const artistId = req.user.artistId;
@@ -46,6 +119,9 @@ exports.createPerformanceGallery = async (req, res) => {
       });
     }
 
+    // Check if artist profile exists
+    const artistProfile = await ArtistProfile.findOne({ artistId });
+    
     // Upload video to S3
     const fileName = `Artist/performanceGallery/artist_${artistId}_${Date.now()}-${req.file.originalname}`;
     const videoUrl = await uploadImage(req.file, fileName);
@@ -53,6 +129,7 @@ exports.createPerformanceGallery = async (req, res) => {
     // Create new performance gallery entry
     const newPerformance = new ArtistPerformanceGallery({
       artistId,
+      artistProfileId: artistProfile ? artistProfile._id : null,
       venueName: venueName.trim(),
       genre: genre.trim(),
       videoUrl,

@@ -48,15 +48,12 @@ exports.shortlistArtist = async (req, res) => {
     }
 
     // Create new shortlist entry
-    await Shortlist.create({ hostId, artistId });
-
-    // Update artist profile
-    artist.isShortlisted = true;
-    await artist.save();
+    const shortlistArtist=await Shortlist.create({ hostId, artistId });
 
     return apiResponse(res, {
       statusCode: 201,
       message: "Artist successfully shortlisted.",
+      data: shortlistArtist
     });
   } catch (err) {
     console.error("Shortlist Error:", err);
@@ -68,7 +65,6 @@ exports.shortlistArtist = async (req, res) => {
   }
 };
 
-// GET Shortlisted Artists
 
 exports.getShortlistedArtists = async (req, res) => {
   try {
@@ -117,7 +113,6 @@ exports.getShortlistedArtists = async (req, res) => {
     });
   }
 };
-
 
 
 exports.removeShortlistArtist = async (req, res) => {
@@ -173,6 +168,90 @@ exports.removeShortlistArtist = async (req, res) => {
       success: false,
       statusCode: 500,
       message: "Server error",
+    });
+  }
+};
+
+
+exports.updateShortlistArtist = async (req, res) => {
+  try {
+    const hostId = req.user.hostId;
+    const { artistId, isSalaryBasis, assignedEvents } = req.body;
+
+    // Validate required fields
+    if (!hostId || !artistId) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "hostId or artistId missing.",
+      });
+    }
+
+    // Validate ObjectId format for artistId
+    if (!mongoose.Types.ObjectId.isValid(artistId)) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: "Invalid artistId format.",
+      });
+    }
+
+    // Validate assignedEvents if provided
+    if (assignedEvents) {
+      if (!Array.isArray(assignedEvents)) {
+        return apiResponse(res, {
+          success: false,
+          statusCode: 400,
+          message: "assignedEvents must be an array.",
+        });
+      }
+
+      // Validate each event ID in assignedEvents
+      for (const eventId of assignedEvents) {
+        if (!mongoose.Types.ObjectId.isValid(eventId)) {
+          return apiResponse(res, {
+            success: false,
+            statusCode: 400,
+            message: `Invalid eventId: ${eventId}.`,
+          });
+        }
+      }
+    }
+
+    // Check if the shortlist entry exists
+    const shortlistEntry = await Shortlist.findOne({ hostId, artistId });
+    if (!shortlistEntry) {
+      return apiResponse(res, {
+        success: false,
+        statusCode: 404,
+        message: "Shortlist entry not found.",
+      });
+    }
+
+    // Update fields
+    if (isSalaryBasis !== undefined) {
+      shortlistEntry.isSalaryBasis = isSalaryBasis;
+    }
+    if (assignedEvents) {
+      shortlistEntry.assignedEvents = assignedEvents;
+    }
+
+    // Save the updated shortlist entry
+    await shortlistEntry.save();
+
+    return apiResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "Shortlist entry updated successfully.",
+      data: shortlistEntry,
+    });
+  } catch (err) {
+    console.error("Update Shortlist Error:", err);
+    return apiResponse(res, {
+      success: false,
+      statusCode: 500,
+      message: "Server error",
+      data: { error: err.message },
     });
   }
 };

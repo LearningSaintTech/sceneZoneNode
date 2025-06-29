@@ -1,9 +1,10 @@
- const Event = require("../../models/Events/event");
+const Event = require("../../models/Events/event");
 const EventInvitation = require("../../models/InviteArtist/inviteArtist");
+const EventApplication = require("../../../Artist/models/EventApplication/eventApplication");
 const { uploadImage, deleteImage, deleteFromS3 } = require("../../../utils/s3Functions");
-const HostProfile = require("../../models/Profile/profile");
-const mongoose = require("mongoose");
 const { apiResponse } = require("../../../utils/apiResponse");
+const mongoose = require("mongoose");
+
 
 // CREATE Event
 exports.createEvent = async (req, res) => {
@@ -264,9 +265,9 @@ exports.createEvent = async (req, res) => {
 };
 
 // GET Events by Host ID
-exports.getAllEventsByHostId = async (req, res) => {
+exports.getAllEvents = async (req, res) => {
   try {
-    const hostId = req.user.hostId; // or req.user.userId, depending on your auth setup
+    const hostId = req.user.hostId;
 
     const events = await Event.find({ hostId }).populate("assignedArtists");
 
@@ -303,7 +304,7 @@ exports.getEventById = async (req, res) => {
     }
 
     // Fetch event with populated fields
-    const event = await Event.findById(eventId).populate("assignedArtists");
+    const event = await Event.findById(eventId).populate("assignedArtists").populate("hostId");
     if (!event) {
       return apiResponse(res, {
         success: false,
@@ -775,6 +776,8 @@ exports.updateEventDiscount = async (req, res) => {
     });
   }
 };
+
+
 exports.toggleEventGuestList = async (req, res) => {
   try {
     const hostId = req.user.hostId;
@@ -876,3 +879,190 @@ exports.getLatestEvents = async (req, res) => {
     });
   }
 };
+
+
+
+exports.updateEventApplicationStatus = async (req, res) => {
+  try {
+    console.log("Starting updateEventApplicationStatus: Received request", {
+      params: req.params,
+      body: req.body,
+      user: req.user,
+    });
+
+    const hostId = req.user.hostId;
+    const { applicationId } = req.params;
+    const { status } = req.body;
+
+    // Validate applicationId
+    console.log("Validating applicationId:", { applicationId });
+    if (!mongoose.isValidObjectId(applicationId)) {
+      console.warn("Invalid applicationId provided:", { applicationId });
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid application ID.",
+        statusCode: 400,
+      });
+    }
+
+    // Validate status
+    console.log("Validating status:", { status });
+    if (!["pending", "accepted", "rejected"].includes(status)) {
+      console.warn("Invalid status provided:", { status });
+      return apiResponse(res, {
+        success: false,
+        message: "Status must be one of: pending, accepted, rejected.",
+        statusCode: 400,
+      });
+    }
+
+    // Find the application
+    console.log("Fetching EventApplication:", { applicationId });
+    const application = await EventApplication.findById(applicationId);
+    if (!application) {
+      console.warn("Application not found:", { applicationId });
+      return apiResponse(res, {
+        success: false,
+        message: "Application not found.",
+        statusCode: 404,
+      });
+    }
+    console.log("Application found:", {
+      applicationId,
+      eventId: application.eventId,
+      artistId: application.artistId,
+      currentStatus: application.status,
+    });
+
+    // Find the event to check if the host owns it
+    console.log("Fetching Event:", { eventId: application.eventId });
+    const event = await Event.findById(application.eventId);
+    if (!event || event.hostId.toString() !== hostId.toString()) {
+      console.warn("Event not found or unauthorized:", {
+        eventId: application.eventId,
+        hostId,
+        eventHostId: event?.hostId,
+      });
+      return apiResponse(res, {
+        success: false,
+        message: "Event not found or you don't have permission to update this application.",
+        statusCode: 403,
+      });
+    }
+    console.log("Event ownership verified:", { eventId: event._id, eventName: event.eventName });
+
+    // Update application status
+    console.log("Updating application status:", { applicationId, newStatus: status });
+    application.status = status;
+    await application.save();
+    console.log("Application status updated:", {
+      applicationId,
+      newStatus: application.status,
+    });
+
+    // Update Event's assignedArtists based on status
+    if (status === "rejected") {
+      console.log("Removing artist from assignedArtists:", {
+        eventId: application.eventId,
+        artistId: application.artistId,
+      });
+      await Event.findByIdAndUpdate(
+        application.eventId,
+        { $pull: { assignedArtists: application.artistId } },
+        { new: true }
+      );
+      console.log("Artist removed from assignedArtists");
+    } else if (status === "accepted") {
+      console.log("Adding artist to assignedArtists:", {
+        eventId: application.eventId,
+        artistId: application.artistId,
+      });
+      await Event.findByIdAndUpdate(
+        application.eventId,
+        { $addToSet: { assignedArtists: application.artistId } },
+        { new: true }
+      );
+      console.log("Artist added to assignedArtists");
+    }
+
+    // Populate eventId and artistId for response
+    console.log("Populating application details:", { applicationId });
+    const populatedApplication = await EventApplication.findById(applicationId)
+      .populate("eventId")
+    console.log("Populated application:", {
+      applicationId,
+      eventId: populatedApplication.eventId?._id,
+      artistId: populatedApplication.artistId?._id,
+      status: populatedApplication.status,
+    });
+
+    return apiResponse(res, {
+      success: true,
+      message: `Application status updated to ${status}.`,
+      data: populatedApplication,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("UpdateEventApplicationStatus error:", {
+      error: error.message,
+      stack: error.stack,
+      applicationId: req.params.applicationId,
+      hostId: req.user.hostId,
+      status: req.body.status,
+    });
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to update application status",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};
+
+
+exports.getArtistStatusOfEvent = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    console.log("1111111");
+
+    // Validate eventId
+    if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid eventId.",
+        statusCode: 400,
+      });
+    }
+
+    const eventObjectId = new mongoose.Types.ObjectId(eventId);
+
+    // Fetch all applications for the event
+    const applications = await EventApplication.find({ eventId: eventObjectId })
+      .populate("artistId")
+      .sort({ appliedAt: -1 });
+
+      console.log(applications);
+    if (!applications.length) {
+      return apiResponse(res, {
+        success: true,
+        message: "No applications found for this event.",
+        data: [],
+        statusCode: 200,
+      });
+    }
+
+    return apiResponse(res, {
+      success: true,
+      message: "Applications fetched successfully.",
+      data: applications,
+      statusCode: 200,
+    });
+  } catch (err) {
+    return apiResponse(res, {
+      success: false,
+      message: "Server error.",
+      data: { error: err.message },
+      statusCode: 500,
+    });
+  }
+};   

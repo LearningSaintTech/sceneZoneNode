@@ -1,6 +1,6 @@
-const Event = require("./../../Host/models/Events/event");
-const EventApplication = require("../models/EventApplication/eventApplication");
-const { apiResponse } = require("../../utils/apiResponse");
+const Event = require("../../../Host/models/Events/event");
+const EventApplication = require("../../models/EventApplication/eventApplication");
+const { apiResponse } = require("../../../utils/apiResponse");
 const mongoose = require("mongoose");
 
 exports.getAllEventsForArtist = async (req, res) => {

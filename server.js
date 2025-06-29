@@ -39,7 +39,7 @@ const hostPaymentDetails = require("./Host/Routes/paymentDetails");
 const rateArtist = require("./Host/Routes/Rating");
 const ticketSettingRoutes = require("./Host/Routes/ticketSetting");
 const ticketBookingRoutes = require("./Host/Routes/ticketBooking");
-const hostEventApplications = require("./Host/Routes/eventApplicationRoutes");
+
 
 // Admin Routes
 const adminAuthentication = require("./Admin/Routes/Auth");
@@ -106,9 +106,10 @@ app.use("/api/host", [
   hostPaymentDetails,
   rateArtist,
   ticketSettingRoutes,
-  hostEventApplications,
 ]);
 app.use("/api/host/events", events);
+
+
 
 // Admin Routes
 app.use("/api/admin/auth", adminAuthentication);

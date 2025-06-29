@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const eventApplicationSchema = new mongoose.Schema({
   artistId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "ArtistProfile",
+    ref: "ArtistAuthentication",
     required: true,
   },
   eventId: {

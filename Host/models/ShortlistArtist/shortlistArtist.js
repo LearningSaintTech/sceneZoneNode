@@ -11,6 +11,16 @@ const shortlistSchema = new mongoose.Schema({
     ref: "ArtistProfile",
     required: true,
   },
+  isSalaryBasis:{
+    type:Boolean,
+    default:false
+  },
+  assignedEvents:[
+      {
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"Event"
+      }
+    ],
 });
 
 module.exports = mongoose.model("ShortlistArtist", shortlistSchema);
