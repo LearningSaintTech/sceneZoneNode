@@ -256,11 +256,12 @@ exports.resendOtp = async (req, res) => {
 };
 
 // Login
+// Login Controller
 exports.login = async (req, res) => {
   const { mobileNumber } = req.body;
 
   try {
-    // Validate input
+    // ✅ Validate input
     if (!mobileNumber) {
       return apiResponse(res, {
         success: false,
@@ -269,7 +270,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check if artist exists
+    // 🔍 Check if artist exists in the database
     const artistUser = await artist.findOne({ mobileNumber });
     if (!artistUser) {
       return apiResponse(res, {
@@ -279,28 +280,32 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Delete existing OTPs
+    // 🧹 Delete any existing OTPs for this number
     await Otp.deleteMany({ mobileNumber });
 
-    // Generate new OTP
+    // 🔢 Generate a new OTP
     const otpCode = generateOTP();
     const otp = new Otp({
       mobileNumber,
       code: otpCode,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes from now
     });
 
+    // 💾 Save OTP to the database
     await otp.save();
 
-    // TODO: Send OTP via SMS
-    console.log(`OTP for ${mobileNumber}: ${otpCode}`); // For testing only
+    // 📤 TODO: Integrate with SMS provider here
+    console.log(`OTP for ${mobileNumber}: ${otpCode}`); // ⚠️ Visible only in server logs
 
+    // ✅ Send response
     return apiResponse(res, {
       success: true,
       message: 'OTP sent successfully',
-      data:otp.code
+      data: otp.code, // Consider omitting in production
     });
+
   } catch (error) {
+    // ❌ Handle server errors
     console.error('Login error:', error);
     return apiResponse(res, {
       success: false,
@@ -311,12 +316,16 @@ exports.login = async (req, res) => {
   }
 };
 
+
 // Login with Password
+// Password-Based Login Controller
 exports.loginWithPassword = async (req, res) => {
-  const { mobileNumber, password } = req.body;
+  console.log("qqqqqq");
+  let { mobileNumber, password } = req.body;
+  console.log("qqqqqqq1111", req.body);
 
   try {
-    // Validate input
+    // ✅ Input Validation
     if (!mobileNumber || !password) {
       return apiResponse(res, {
         success: false,
@@ -325,7 +334,17 @@ exports.loginWithPassword = async (req, res) => {
       });
     }
 
-    // Find artist
+    // ➕ Add '+' to mobile number if not already present
+  
+
+    // Convert mobileNumber to string to avoid .startsWith() error
+    mobileNumber = mobileNumber.toString();
+    if (!mobileNumber.startsWith('+')) {
+      mobileNumber = '+' + mobileNumber;
+    }
+    
+
+    // 🔍 Find artist by mobile number
     const artistUser = await artist.findOne({ mobileNumber });
     if (!artistUser) {
       return apiResponse(res, {
@@ -335,7 +354,7 @@ exports.loginWithPassword = async (req, res) => {
       });
     }
 
-    // Check if artist is verified
+    // ⚠️ Check if artist is verified
     if (!artistUser.isVerified) {
       return apiResponse(res, {
         success: false,
@@ -344,7 +363,7 @@ exports.loginWithPassword = async (req, res) => {
       });
     }
 
-    // Check password
+    // 🔐 Validate password
     const isMatch = await bcrypt.compare(password, artistUser.password);
     if (!isMatch) {
       return apiResponse(res, {
@@ -354,22 +373,27 @@ exports.loginWithPassword = async (req, res) => {
       });
     }
 
-    // Generate JWT token
+    // 🪪 Generate JWT token
     const token = jwt.sign(
       { artistId: artistUser._id, role: artistUser.role },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // Set token in response header
+    // 📨 Send token in Authorization header
     res.setHeader('Authorization', `Bearer ${token}`);
+
+    // 🎯 Return user data (excluding password)
+    const userData = await artist.findById(artistUser._id).select('-password');
 
     return apiResponse(res, {
       success: true,
       message: 'Login successful',
-      data: { user: await artist.findById(artistUser._id).select('-password') },
+      data: { user: userData },
     });
+
   } catch (error) {
+    // ❌ Error handling
     console.error('Password login error:', error);
     return apiResponse(res, {
       success: false,
@@ -379,6 +403,8 @@ exports.loginWithPassword = async (req, res) => {
     });
   }
 };
+
+
 
 exports.getArtist = async (req, res) => {
   try {

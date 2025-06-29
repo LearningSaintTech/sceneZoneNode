@@ -6,15 +6,10 @@ const hostAuthenticationSchema = new mongoose.Schema({
     required: true,
   },
   mobileNumber: {
-    type: Number,
+    type: String,
+    
     required: true,
-    validate: {
-      validator: function (v) {
-        return /^[0-9]{10}$/.test(v.toString());
-      },
-      message: (props) =>
-        `${props.value} is not a valid 10-digit mobile number!`,
-    },
+   
   },
   isMobileVerified:{
     type:Boolean,

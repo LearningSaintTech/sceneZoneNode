@@ -5,16 +5,18 @@ const connectDB = require("./config/db");
 
 // User Routes
 const userAuthentication = require("./User/Routes/Auth");
+const userFirebaseAuth = require("./User/Routes/FirebaseAuthRoutes");
 const userProfile = require("./User/Routes/userProfile");
 const userFavouriteEvent = require("./User/Routes/favouriteEvent");
 const userForgotPassword = require("./User/Routes/ForgotPassword");
 const userPaymentDetails = require("./User/Routes/paymentDetails");
 const guestRequest = require("./User/Routes/guestList");
 const eventDashboard = require("./User/Routes/event/eventDashboardRoutes");
-const filterRoutesUser=require("./User/Routes/filter")
+const filterRoutesUser = require("./User/Routes/filter");
 
 // Artist Routes
 const artistAuthentication = require("./Artist/Routes/Auth");
+const artistFirebaseAuth = require("./Artist/Routes/FirebaseAuthRoutes");
 const artistProfile = require("./Artist/Routes/profile");
 const performanceGalleryRoutes = require("./Artist/Routes/performanceGalleryRoutes");
 const respondToInvitation = require("./Artist/Routes/respondInvite");
@@ -29,6 +31,7 @@ const savedEventRoutes = require("./Artist/Routes/savedEvent");
 
 // Host Routes
 const hostAuthentication = require("./Host/Routes/Auth");
+const hostFirebaseAuth = require("./Host/Routes/FirebaseAuthRoutes");
 const hostProfile = require("./Host/Routes/Profile");
 const events = require("./Host/Routes/Event");
 const shortlistArtist = require("./Host/Routes/shortlistArtist");
@@ -69,6 +72,7 @@ app.get("/", (req, res) => {
 
 // User Routes
 app.use("/api/user/auth", userAuthentication);
+app.use("/api/user/firebase-auth", userFirebaseAuth);
 app.use("/api/user", [
   userProfile,
   userFavouriteEvent,
@@ -78,10 +82,11 @@ app.use("/api/user", [
 ]);
 app.use("/api/user/ticket", ticketBookingRoutes);
 app.use("/api/user/eventDashboard", eventDashboard);
-app.use("/api/user/event",filterRoutesUser)
+app.use("/api/user/event", filterRoutesUser);
 
 // Artist Routes
 app.use("/api/artist/auth", artistAuthentication);
+app.use("/api/artist/firebase-auth", artistFirebaseAuth);
 app.use("/api/artist", [
   artistProfile,
   respondToInvitation,
@@ -97,6 +102,7 @@ app.use("/api/artist/events", artistEvents);
 
 // Host Routes
 app.use("/api/host/auth", hostAuthentication);
+app.use("/api/host/firebase-auth", hostFirebaseAuth);
 app.use("/api/host", [
   hostProfile,
   shortlistArtist,
