@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authMiddleware } = require("../../middlewares/authMiddleware");
-const { getAllEventsForArtist } = require("./../controllers/event");
+const { getAllEventsForArtist } = require("../controllers/EventApplication/event");
 
 
 router.get(

@@ -55,16 +55,16 @@ const artistProfileSchema = new mongoose.Schema({
     type:[mongoose.Schema.Types.ObjectId],
     ref:"ArtistPerformanceGallery"
   },
-  isShortlisted:{
-    type:Boolean,
-    default:false
-  },
-  AssignedEvents:[
-    {
-      type:mongoose.Schema.Types.ObjectId,
-      ref:"Event"
-    }
-  ],
+  // isShortlisted:{
+  //   type:Boolean,
+  //   default:false
+  // },
+  // AssignedEvents:[
+  //   {
+  //     type:mongoose.Schema.Types.ObjectId,
+  //     ref:"Event"
+  //   }
+  // ],
   //average rating
   Rating:{
     type:Number,

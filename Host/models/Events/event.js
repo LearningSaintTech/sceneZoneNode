@@ -37,7 +37,7 @@ const eventSchema = new mongoose.Schema(
       },
     ],
     about: {
-      type: String,
+      type: String, 
       trim: true,
       minlength: [3, "About section must be at least 3 characters long."],
       maxlength: [1000, "About section cannot exceed 1000 characters."],

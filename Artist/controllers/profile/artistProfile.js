@@ -471,6 +471,7 @@ exports.getAllArtists = async (req, res) => {
   try {
     // Fetch all artist profiles with populated fields
     const artists = await ArtistProfile.find()
+      .populate("artistId")
       .populate("performanceUrlId", "venueName genre videoUrl")
       .populate("AssignedEvents", "eventName date venue");
 
@@ -594,25 +595,47 @@ exports.getArtistPerformance = async (req, res) => {
       });
     }
 
-    if (profile.status !== "approved") {
-      return apiResponse(res, {
-        success: false,
-        statusCode: 403,
-        message: "Profile is not available to view",
-      });
-    }
+    // if (profile.status !== "approved") {
+    //   return apiResponse(res, {
+    //     success: false,
+    //     statusCode: 403,
+    //     message: "Profile is not available to view",
+    //   });
+    // }
 
-    // Populate performanceUrlId to fetch ArtistPerformanceGallery details
-    const performances = await ArtistProfile.findOne({ artistId })
-      .populate("performanceUrlId", "venueName genre videoUrl")
-      .select("performanceUrlId");
+    // // Populate performanceUrlId to fetch ArtistPerformanceGallery details
+    // const performances = await ArtistProfile.findOne({ artistId })
+    //   .populate("performanceUrlId", "venueName genre videoUrl")
+    //   .select("performanceUrlId");
 
-    return apiResponse(res, {
-      success: true,
-      message: "Artist performances fetched successfully",
-      data: performances.performanceUrlId || [],
-      statusCode: 200,
-    });
+    // return apiResponse(res, {
+    //   success: true,
+    //   message: "Artist performances fetched successfully",
+    //   data: performances.performanceUrlId || [],
+    //   statusCode: 200,
+    // });
+
+    // Fetch all performance gallery entries for the artistId
+        const performances = await ArtistPerformanceGallery.find(
+          { artistId },
+          "artistProfileId venueName genre videoUrl"
+        );
+    
+        if (!performances || performances.length === 0) {
+          return apiResponse(res, {
+            success: false,
+            statusCode: 404,
+            message: "No performance gallery entries found for this artist.",
+          });
+        }
+    
+        return apiResponse(res, {
+          success: true,
+          statusCode: 200,
+          message: "Performance gallery entries fetched successfully.",
+          data: performances,
+        });
+
   } catch (err) {
     console.error("Get Artist Performance Error:", err);
     return apiResponse(res, {

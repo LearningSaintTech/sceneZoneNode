@@ -116,7 +116,7 @@ exports.getAppliedEvents = async (req, res) => {
   const artistId = req.user.artistId;
   console.log("Starting getAppliedEvents: Fetching for artist:", { artistId });
 
-  try {
+  try { 
     console.log("Querying EventApplication for artist:", { artistId });
     const applications = await EventApplication.find({ artistId })
       .populate("eventId")
@@ -147,6 +147,99 @@ exports.getAppliedEvents = async (req, res) => {
       success: false,
       message: "Failed to fetch applied events",
       error: error.message,
+      statusCode: 500,
+    });
+  }
+};
+
+
+
+exports.removeAppliedEvent = async (req, res) => {
+  try {
+    console.log("Starting removeAppliedEvent: Received request", {
+      params: req.params,
+      user: req.user,
+    });
+
+    const { eventId } = req.params;
+    const artistId = req.user.artistId;
+
+    // Validate eventId
+    console.log("Validating eventId:", { eventId });
+    if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+      console.warn("Invalid eventId provided:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid eventId.",
+        statusCode: 400,
+      });
+    }
+
+    const eventObjectId = new mongoose.Types.ObjectId(eventId);
+    console.log("Converted eventId to ObjectId:", { eventObjectId });
+
+    // Check if the event exists
+    console.log("Checking if event exists:", { eventObjectId });
+    const event = await Event.findById(eventObjectId);
+    if (!event) {
+      console.warn("Event not found:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Event not found.",
+        statusCode: 404,
+      });
+    }
+    console.log("Event found:", { eventId, eventName: event.eventName });
+
+    // Check if the application exists
+    console.log("Checking for existing application:", { eventId, artistId });
+    const application = await EventApplication.findOne({ eventId, artistId });
+    if (!application) {
+      console.warn("Application not found:", { eventId, artistId });
+      return apiResponse(res, {
+        success: false,
+        message: "Application not found.",
+        statusCode: 404,
+      });
+    }
+    console.log("Application found:", {
+      applicationId: application._id,
+      status: application.status,
+    });
+
+    // Remove the application
+    console.log("Removing application:", { applicationId: application._id });
+    await EventApplication.deleteOne({ _id: application._id });
+    console.log("Application removed:", { applicationId: application._id });
+
+    // Remove artistId from assignedArtists array in Event model
+    console.log("Updating event's assignedArtists:", { eventId, artistId });
+    const updatedEvent = await Event.findByIdAndUpdate(
+      eventObjectId,
+      { $pull: { assignedArtists: artistId } },
+      { new: true }
+    );
+    console.log("Event updated:", {
+      eventId,
+      assignedArtists: updatedEvent.assignedArtists,
+    });
+
+    return apiResponse(res, {
+      success: true,
+      message: "Application removed successfully.",
+      statusCode: 200,
+    });
+  } catch (err) {
+    console.error("RemoveAppliedEvent error:", {
+      error: err.message,
+      stack: err.stack,
+      eventId: req.params.eventId,
+      artistId: req.user.artistId,
+    });
+    return apiResponse(res, {
+      success: false,
+      message: "Server error.",
+      data: { error: err.message },
       statusCode: 500,
     });
   }
