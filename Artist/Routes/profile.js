@@ -10,7 +10,6 @@ const {
   getAllArtists,
   getArtistPerformance,
 } = require("../../Artist/controllers/profile/artistProfile");
-const { shortlistArtist, getShortlistedArtists } = require("../../Host/controllers/ShortlistArtist/shortlistArtist");
 const { authMiddleware } = require("../../middlewares/authMiddleware");
 
 
@@ -53,18 +52,6 @@ router.get(
   "/get-artist-performance/:artistId",
   authMiddleware(["host"]),
   getArtistPerformance
-);
-
-router.post(
-  "/shortlist-artist",
-  authMiddleware(["host"]),
-  shortlistArtist
-);
-
-router.get(
-  "/get-shortlisted-artists",
-  authMiddleware(["host"]),
-  getShortlistedArtists
 );
 
 

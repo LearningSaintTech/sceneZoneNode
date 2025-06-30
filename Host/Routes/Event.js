@@ -8,15 +8,21 @@ const {
   toggleEventGuestList,
   getLatestEvents,
   updateEventApplicationStatus,
-  getArtistStatusOfEvent
+  getArtistStatusOfEvent,
+  getEventGuestListByDiscount
 } = require("../controllers/Events/event");
 
 const { authMiddleware } = require("../../middlewares/authMiddleware");
 const express = require("express");
 const router = express.Router();
+
 const multer = require("multer");
 const upload = multer();
 
+// Enable/Disable Guest List and Manage Guests
+
+
+// Existing routes
 router.post(
   "/create-event",
   authMiddleware(["host"]),
@@ -40,17 +46,17 @@ router.delete(
 router.get("/get-all-events", authMiddleware(["host"]), getAllEvents);
 
 router.get(
-  "/get-event/:id",
+  "/get-event/:eventId",
   authMiddleware(["host", "artist", "user"]),
   getEventById
 );
-
 
 router.patch(
   "/update-event-discount/:eventId",
   authMiddleware(["host"]),
   updateEventDiscount
 );
+
 router.patch(
   "/toggle-guest-list/:eventId",
   authMiddleware(["host"]),
@@ -63,11 +69,14 @@ router.patch(
   updateEventApplicationStatus
 );
 
-// Route to get latest events
-router.get('/latest',  authMiddleware(["user"]), getLatestEvents);
+router.get('/latest', authMiddleware(["user"]), getLatestEvents);
 
+router.get("/artist-status/:eventId", authMiddleware(["host"]), getArtistStatusOfEvent);
+router.get(
+  "/get-guest-list/:eventId",
+  authMiddleware(["host"]),
+  getEventGuestListByDiscount
+);
 
-//Route to get artist status for Event by EventId
-router.get("/artist-status/:eventId",authMiddleware(["host"]),getArtistStatusOfEvent)
 
 module.exports = router;

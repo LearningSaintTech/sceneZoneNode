@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   shortlistArtist,
-  getShortlistedArtists,
+  getAllShortlistedArtists,
   removeShortlistArtist,
   updateShortlistArtist
 } = require("../controllers/ShortlistArtist/shortlistArtist");
@@ -16,7 +16,7 @@ router.post("/shortlistArtist", authMiddleware(['host']), shortlistArtist);
 // Route to fetch all shortlisted artists for a host
 // GET /getShortlistedArtists
 // Restricted to authenticated hosts only
-router.get("/getShortlistedArtists", authMiddleware(['host']), getShortlistedArtists);
+router.get("/getShortlistedArtists", authMiddleware(['host']), getAllShortlistedArtists);
 
 // Route to remove an artist from a host's shortlist
 // DELETE /removeShortlistArtist/:artistId
@@ -24,7 +24,7 @@ router.get("/getShortlistedArtists", authMiddleware(['host']), getShortlistedArt
 router.delete("/removeShortlistArtist/:artistId", authMiddleware(['host']), removeShortlistArtist);
 
 // Route to update a shortlist entry (e.g., isSalaryBasis or assignedEvents)
-// PUT /updateShortlistArtist
+// PATCH /updateShortlistArtist
 // Restricted to authenticated hosts only
 router.patch("/updateShortlistArtist", authMiddleware(['host']), updateShortlistArtist);
 

@@ -291,7 +291,7 @@ exports.getAllEvents = async (req, res) => {
 // GET Single Event by ID
 exports.getEventById = async (req, res) => {
   try {
-    const eventId = req.params.id;
+    const [eventId] = req.params;
     const user = req.user;
 
     // Validate event ID
@@ -1066,3 +1066,75 @@ exports.getArtistStatusOfEvent = async (req, res) => {
     });
   }
 };   
+
+exports.getEventGuestListByDiscount = async (req, res) => {
+  try {
+    const hostId = req.user.hostId;
+    const { eventId } = req.params;
+    const { discountLevel } = req.query;
+
+    // Validate eventId
+    if (!mongoose.isValidObjectId(eventId)) {
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid event ID.",
+        statusCode: 400,
+      });
+    }
+
+    // Check if event exists and belongs to host
+    const event = await Event.findOne({ _id: eventId, hostId }).populate("guestList.userId");
+    if (!event) {
+      return apiResponse(res, {
+        success: false,
+        message: "Event not found or you don't have permission to view its guest list.",
+        statusCode: 404,
+      });
+    }
+
+    // Validate discountLevel if provided
+    let filteredGuestList = event.guestList;
+    if (discountLevel) {
+      if (!["level1", "level2", "level3"].includes(discountLevel)) {
+        return apiResponse(res, {
+          success: false,
+          message: "Invalid discount level. Must be one of: level1, level2, level3.",
+          statusCode: 400,
+        });
+      }
+      filteredGuestList = event.guestList.filter((guest) => guest.discountLevel === discountLevel);
+    }
+
+    // Check if guest list is enabled
+    if (!event.eventGuestEnabled) {
+      return apiResponse(res, {
+        success: false,
+        message: "Guest list is not enabled for this event.",
+        statusCode: 400,
+      });
+    }
+
+    // Prepare response data
+    const guestListData = filteredGuestList.map((guest) => ({
+      userId: guest.userId._id,
+      userName: guest.userId.name || "Unknown",
+      userEmail: guest.userId.email || "Unknown",
+      discountLevel: guest.discountLevel || "None",
+    }));
+
+    return apiResponse(res, {
+      success: true,
+      message: `Guest list for event fetched successfully${discountLevel ? ` for discount level: ${discountLevel}` : ""}.`,
+      data: guestListData,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Get event guest list error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to fetch event guest list",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};

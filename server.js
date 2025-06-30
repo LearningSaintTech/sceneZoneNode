@@ -54,6 +54,11 @@ const appUsers = require("./Admin/Routes/allUsers");
 const adminForgotPassword = require("./Admin/Routes/forgotPassword");
 const bannerRoutes = require("./Admin/Routes/banner");
 
+
+const invoiceRoutes = require("./artistHostBooking/routes/invoiceRoutes");
+const bookingRoutes = require('./artistHostBooking/routes/bookingRoutes');
+const guestListRoutes = require('./guestList/routes/guestListRoutes');
+
 const app = express();
 const PORT = process.env.PORT;
 
@@ -128,6 +133,9 @@ app.use("/api/admin", [
   adminForgotPassword,
 ]);
 app.use("/api/admin/banner", bannerRoutes);
+app.use("/api/invoices", invoiceRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/guestList', guestListRoutes);
 
 // Start Server
 app.listen(PORT, "0.0.0.0", () =>

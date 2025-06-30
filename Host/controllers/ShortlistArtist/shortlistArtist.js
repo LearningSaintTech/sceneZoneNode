@@ -1,4 +1,4 @@
-const Shortlist = require("../../models/ShortlistArtist/shortlistArtist");
+const ShortlistArtist = require("../../models/ShortlistArtist/shortlistArtist");
 const ArtistProfile = require("../../../Artist/models/Profile/profile");
 const { apiResponse } = require("../../../utils/apiResponse");
 const mongoose = require("mongoose");
@@ -38,7 +38,7 @@ exports.shortlistArtist = async (req, res) => {
     }
 
     // Check if already shortlisted
-    const exists = await Shortlist.findOne({ hostId, artistId });
+    const exists = await ShortlistArtist.findOne({ hostId, artistId });
     if (exists) {
       return apiResponse(res, {
         success: false,
@@ -48,7 +48,7 @@ exports.shortlistArtist = async (req, res) => {
     }
 
     // Create new shortlist entry
-    const shortlistArtist=await Shortlist.create({ hostId, artistId });
+    const shortlistArtist = await ShortlistArtist.create({ hostId, artistId });
 
     return apiResponse(res, {
       statusCode: 201,
@@ -65,10 +65,11 @@ exports.shortlistArtist = async (req, res) => {
   }
 };
 
-
-exports.getShortlistedArtists = async (req, res) => {
+exports.getAllShortlistedArtists = async (req, res) => {
   try {
     const hostId = req.user.hostId;
+
+    console.log("Fetching shortlisted artists for host:", hostId);
 
     if (!hostId) {
       return apiResponse(res, {
@@ -78,9 +79,9 @@ exports.getShortlistedArtists = async (req, res) => {
       });
     }
 
-    // Find all shortlisted artist IDs for the host
-    const shortlistedEntries = await Shortlist.find({ hostId }).select(
-      "artistId"
+    // Find all shortlisted entries for the host
+    const shortlistedEntries = await ShortlistArtist.find({ hostId }).select(
+      "hostId isSalaryBasis assignedEvents artistId"
     );
 
     if (shortlistedEntries.length === 0) {
@@ -94,26 +95,40 @@ exports.getShortlistedArtists = async (req, res) => {
     // Extract artist IDs
     const artistIds = shortlistedEntries.map((entry) => entry.artistId);
 
-    // Fetch artist profiles for the shortlisted artist IDs
-    const artists = await ArtistProfile.find({
+    // Fetch artist profiles based on artistIds
+    const artistProfiles = await ArtistProfile.find({
       artistId: { $in: artistIds },
     }).select("genre budget performanceUrl profileImageUrl artistId");
 
+    // Map shortlisted entries to include artist profile, hostId, isSalaryBasis, and assignedEvents
+    const responseData = shortlistedEntries.map((entry) => {
+      const artistProfile = artistProfiles.find((profile) =>
+        profile.artistId.equals(entry.artistId)
+      );
+      return {
+        hostId: entry.hostId,
+        isSalaryBasis: entry.isSalaryBasis,
+        assignedEvents: entry.assignedEvents,
+        artistProfile: artistProfile || null, // Handle case where profile is not found
+      };
+    });
+
     return apiResponse(res, {
+      success: true,
       statusCode: 200,
       message: "Shortlisted artists fetched successfully.",
-      data: artists,
+      data: responseData,
     });
   } catch (err) {
-    console.error("Error in getShortlistedArtists:", err.message);
+    console.error("Error in getAllShortlistedArtists:", err.message);
     return apiResponse(res, {
       success: false,
       statusCode: 500,
       message: "Server error",
+      data: { error: err.message },
     });
   }
 };
-
 
 exports.removeShortlistArtist = async (req, res) => {
   try {
@@ -138,18 +153,18 @@ exports.removeShortlistArtist = async (req, res) => {
     }
 
     // Check if the artist is shortlisted by the host
-    const shortlistEntry = await Shortlist.findOne({ hostId, artistId });
+    const shortlistEntry = await ShortlistArtist.findOne({ hostId, artistId });
 
     if (!shortlistEntry) {
       return apiResponse(res, {
         success: false,
         statusCode: 404,
-        message: "Artist is not shortlisted.",
+        message: `Not Found Any Entry Of Shortlist Artist of this Host id ${hostId}`,
       });
     }
 
     // Remove the shortlist entry
-    await Shortlist.deleteOne({ hostId, artistId });
+    await ShortlistArtist.deleteOne({ hostId, artistId });
 
     // Update artist profile
     const artist = await ArtistProfile.findOne({ artistId });
@@ -171,7 +186,6 @@ exports.removeShortlistArtist = async (req, res) => {
     });
   }
 };
-
 
 exports.updateShortlistArtist = async (req, res) => {
   try {
@@ -219,7 +233,7 @@ exports.updateShortlistArtist = async (req, res) => {
     }
 
     // Check if the shortlist entry exists
-    const shortlistEntry = await Shortlist.findOne({ hostId, artistId });
+    const shortlistEntry = await ShortlistArtist.findOne({ hostId, artistId });
     if (!shortlistEntry) {
       return apiResponse(res, {
         success: false,

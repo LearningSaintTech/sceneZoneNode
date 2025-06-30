@@ -51,6 +51,11 @@ const artistProfileSchema = new mongoose.Schema({
     default: false,
     required: true
   },
+    isNegotiaitonAvailable: {
+    type: Boolean,
+    default: true,
+    required: true
+  },
   performanceUrlId:{
     type:[mongoose.Schema.Types.ObjectId],
     ref:"ArtistPerformanceGallery"

@@ -208,6 +208,20 @@ const eventSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    guestList: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "UserAuthentication",
+          required: false,
+        },
+        discountLevel: {
+          type: String,
+          enum: ["level1", "level2", "level3"],
+          required: false,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
