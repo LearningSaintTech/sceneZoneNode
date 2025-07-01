@@ -89,7 +89,9 @@ exports.getAllSavedEvents = async (req, res) => {
   const artistId = req.user.artistId;
 
   try {
-    const savedEvents = await SavedEvent.find({ artistId });
+    const savedEvents = await SavedEvent.find({ artistId })
+    .populate("eventId")
+    .populate("artistId")
 
     return apiResponse(res, {
       success: true,
