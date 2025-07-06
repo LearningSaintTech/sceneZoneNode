@@ -4,6 +4,6 @@ const { filterArtists } = require("../controllers/Filter/filter");
 const { authMiddleware } = require("../../middlewares/authMiddleware");
 
 
-router.get("/filter", authMiddleware(["host"]), filterArtists);
+router.post("/filter", authMiddleware(["host"]), filterArtists);
 
 module.exports = router;

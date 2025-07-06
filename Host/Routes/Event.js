@@ -21,7 +21,11 @@ const upload = multer();
 
 // Enable/Disable Guest List and Manage Guests
 
-
+router.get(
+  "/get-event/:eventId",
+  authMiddleware(["host", "artist", "user"]),
+  getEventById
+);
 // Existing routes
 router.post(
   "/create-event",
@@ -45,11 +49,7 @@ router.delete(
 
 router.get("/get-all-events", authMiddleware(["host"]), getAllEvents);
 
-router.get(
-  "/get-event/:eventId",
-  authMiddleware(["host", "artist", "user"]),
-  getEventById
-);
+
 
 router.patch(
   "/update-event-discount/:eventId",

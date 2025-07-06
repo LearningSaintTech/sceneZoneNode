@@ -1,23 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const bookingController = require('../controller/bookingController');
+const { authMiddleware } = require('../../middlewares/authMiddleware');
 
-// Create a new booking
-router.post('/', bookingController.createBooking);
+// Create a Razorpay order
+router.post('/create-order', authMiddleware(['host']), bookingController.createOrder);
 
-// Get all bookings
-router.get('/', bookingController.getAllBookings);
-
-// Get a single booking by ID
-router.get('/:id', bookingController.getBookingById);
-
-// Update a booking by ID
-router.put('/:id', bookingController.updateBooking);
-
-// Delete a booking by ID
-router.delete('/:id', bookingController.deleteBooking);
-
-// Update payment status for first or second payment
-router.patch('/:id/payment', bookingController.updatePaymentStatus);
+// Verify Razorpay payment and create booking
+router.post('/verify-payment', authMiddleware(['host']), bookingController.verifyPayment);
 
 module.exports = router;

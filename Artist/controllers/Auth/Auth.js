@@ -408,43 +408,55 @@ exports.loginWithPassword = async (req, res) => {
 
 exports.getArtist = async (req, res) => {
   try {
-    // Get token from Authorization header
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return apiResponse(res, {
         success: false,
-        message: 'Authorization token missing',
+        message: "Authorization token missing",
         statusCode: 401,
       });
     }
 
-    const token = authHeader.split(' ')[1];
-
-    // Verify token
+    const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, JWT_SECRET);
     const artistId = decoded.artistId;
 
-    // Fetch artist
-    const artistUser = await artist.findById(artistId).select('-password');
-
+    // Fetch artist (Auth)
+    const artistUser = await artist.findById(artistId).select("-password");
     if (!artistUser) {
       return apiResponse(res, {
         success: false,
-        message: 'Artist not found',
+        message: "Artist not found",
         statusCode: 404,
       });
     }
 
+    // Fetch profile
+    const artistProfile = await ArtistProfile.findOne({ artistId });
+    if (!artistProfile) {
+      return apiResponse(res, {
+        success: false,
+        message: "Artist profile not found",
+        statusCode: 404,
+      });
+    }
+
+    // Merge result
+    const artistData = {
+      ...artistUser.toObject(),
+      profile: artistProfile.toObject(),
+    };
+
     return apiResponse(res, {
       success: true,
-      message: 'Artist fetched successfully',
-      data: { user: artistUser },
+      message: "Artist fetched successfully",
+      data: artistData,
     });
   } catch (error) {
-    console.error('Get artist error:', error);
+    console.error("Get artist error:", error);
     return apiResponse(res, {
       success: false,
-      message: 'Failed to fetch artist',
+      message: "Failed to fetch artist",
       error: error.message,
       statusCode: 500,
     });

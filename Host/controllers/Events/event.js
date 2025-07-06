@@ -267,9 +267,31 @@ exports.createEvent = async (req, res) => {
 // GET Events by Host ID
 exports.getAllEvents = async (req, res) => {
   try {
-    const hostId = req.user.hostId;
+    const hostId = req.user?.hostId;
 
-    const events = await Event.find({ hostId }).populate("assignedArtists");
+    // Validate hostId
+    if (!hostId || !mongoose.isValidObjectId(hostId)) {
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid or missing hostId",
+        statusCode: 400,
+      });
+    }
+
+    // Query events and populate assignedArtists
+    const events = await Event.find({ hostId }).populate({
+      path: "assignedArtists",
+      match: { _id: { $exists: true } },
+    });
+
+    // Handle empty results
+    if (!events || events.length === 0) {
+      return apiResponse(res, {
+        success: true,
+        message: "No events found for this host",
+        data: [],
+      });
+    }
 
     return apiResponse(res, {
       success: true,
@@ -289,22 +311,36 @@ exports.getAllEvents = async (req, res) => {
 
 
 // GET Single Event by ID
+
+
 exports.getEventById = async (req, res) => {
   try {
-    const [eventId] = req.params;
-    const user = req.user;
-
-    // Validate event ID
-    if (!mongoose.isValidObjectId(eventId)) {
+    const hostId = req.user?.hostId;
+    const eventId = req.params.eventId;
+    console.log(eventId);
+    console.log(hostId);
+    // Validate inputs
+    if (!eventId || !mongoose.isValidObjectId(eventId)) {
       return apiResponse(res, {
         success: false,
-        message: "Invalid event ID.",
+        message: "Invalid or missing eventId",
+        statusCode: 400,
+      });
+    }
+    if (!hostId || !mongoose.isValidObjectId(hostId)) {
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid or missing hostId",
         statusCode: 400,
       });
     }
 
-    // Fetch event with populated fields
-    const event = await Event.findById(eventId).populate("assignedArtists").populate("hostId");
+    // Fetch event with populated assignedArtists
+    const event = await Event.findById(eventId).populate({
+      path: "assignedArtists",
+      match: { _id: { $exists: true } },
+    });
+
     if (!event) {
       return apiResponse(res, {
         success: false,
@@ -313,24 +349,18 @@ exports.getEventById = async (req, res) => {
       });
     }
 
+    // Verify host ownership
+    if (event.hostId.toString() !== hostId) {
+      return apiResponse(res, {
+        success: false,
+        message: "Unauthorized: You are not the host of this event",
+        statusCode: 403,
+      });
+    }
 
-    // Update showStatus for each event date
-    if (Array.isArray(event.eventDateTime)) {
-      const today = new Date();
-      const showStatusArray = event.eventDateTime
-        .map((dt) => {
-          const parsedDate = new Date(dt);
-          if (!isNaN(parsedDate)) {
-            const status = parsedDate < today ? "recent" : "upcoming";
-            return { date: parsedDate.toISOString().split("T")[0], status };
-          }
-          return null;
-        })
-        .filter(Boolean);
-
-      // Save updated showStatus
-      event.showStatus = showStatusArray;
-      await event.save();
+    // Ensure assignedArtists is an array
+    if (!Array.isArray(event.assignedArtists)) {
+      event.assignedArtists = [];
     }
 
     return apiResponse(res, {

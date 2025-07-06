@@ -58,7 +58,7 @@ const bannerRoutes = require("./Admin/Routes/banner");
 const invoiceRoutes = require("./artistHostBooking/routes/invoiceRoutes");
 const bookingRoutes = require('./artistHostBooking/routes/bookingRoutes');
 const guestListRoutes = require('./guestList/routes/guestListRoutes');
-
+const chatNegotiationRoutes = require('./artistHostChat/Routes/chatNegotiationRoutes');
 const app = express();
 const PORT = process.env.PORT;
 
@@ -136,7 +136,7 @@ app.use("/api/admin/banner", bannerRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/guestList', guestListRoutes);
-
+app.use("/api/chat", chatNegotiationRoutes);
 // Start Server
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on http://localhost:${PORT}`)

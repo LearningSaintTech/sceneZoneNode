@@ -3,14 +3,17 @@ const ArtistPerformanceGallery = require("../../../Artist/models/Profile/perform
 const { apiResponse } = require("../../../utils/apiResponse");
 const mongoose = require("mongoose");
 
+// /Users/possesivepanda/Desktop/SceneFolder/sceneZoneNode/Host/controllers/Filter/filter.js
 exports.filterArtists = async (req, res) => {
   try {
     console.log("Received filter request:", {
       body: req.body,
+      query: req.query, // Log query parameters for debugging
       timestamp: new Date().toISOString(),
     });
 
-    const { price, instruments, genres, page = 1, limit = 10 } = req.body;
+    // Use req.body if available (POST), otherwise fall back to req.query (GET) or empty object
+    const { price, instruments, genres, page = 1, limit = 10 } = req.body || req.query || {};
 
     // Validate pagination parameters
     const pageNum = parseInt(page, 10);
@@ -26,9 +29,9 @@ exports.filterArtists = async (req, res) => {
 
     // Build the query object for ArtistProfile with $or for filters
     let query = { $or: [] };
+    let sortOption = {};
 
     // Handle price filter (supporting multiple ranges)
-    let sortOption = {};
     if (price) {
       console.log("Processing price filter:", price);
       const priceRanges = {
@@ -50,24 +53,18 @@ exports.filterArtists = async (req, res) => {
           return apiResponse(res, {
             success: false,
             statusCode: 400,
-            message:
-              "Invalid price ranges. Use 'under-1000', '1000-2000', '2000-3000', or '3000-above'.",
+            message: "Invalid price ranges. Use 'under-1000', '1000-2000', '2000-3000', or '3000-above'.",
           });
         }
-
-        // Add price conditions to $or
-        const priceConditions = validRanges.map((range) => priceRanges[range]);
-        query.$or.push(...priceConditions);
+        query.$or.push(...validRanges.map((range) => priceRanges[range]));
       } else if (price.range && priceRanges[price.range]) {
-        // Support single price range
         query.$or.push(priceRanges[price.range]);
       } else if (price.range) {
         console.error("Invalid price range:", price.range);
         return apiResponse(res, {
           success: false,
           statusCode: 400,
-          message:
-            "Invalid price range. Use 'under-1000', '1000-2000', '2000-3000', or '3000-above'.",
+          message: "Invalid price range. Use 'under-1000', '1000-2000', '2000-3000', or '3000-above'.",
         });
       }
 
@@ -85,11 +82,9 @@ exports.filterArtists = async (req, res) => {
       }
     }
 
-    // Handle instruments filter (supporting multiple instruments)
+    // Handle instruments filter
     if (instruments && Array.isArray(instruments) && instruments.length > 0) {
-      const validInstruments = instruments.filter(
-        (inst) => typeof inst === "string" && inst.trim() !== ""
-      );
+      const validInstruments = instruments.filter((inst) => typeof inst === "string" && inst.trim() !== "");
       if (validInstruments.length === 0) {
         console.error("No valid instruments provided:", instruments);
         return apiResponse(res, {
@@ -107,7 +102,7 @@ exports.filterArtists = async (req, res) => {
       query.$or.push({ instrument: { $regex: `^${instruments}$`, $options: "i" } });
     }
 
-    // Handle genres filter using ArtistPerformanceGallery
+    // Handle genres filter
     if (genres && Array.isArray(genres) && genres.length > 0) {
       const validGenres = genres.filter((g) => typeof g === "string" && g.trim() !== "");
       if (validGenres.length === 0) {
@@ -140,7 +135,7 @@ exports.filterArtists = async (req, res) => {
       });
     }
 
-    // If no filters are provided, return all artists
+    // If no filters are provided, fetch all artists
     if (query.$or.length === 0) {
       console.log("No filters provided, querying all artists");
       query = {};
@@ -168,7 +163,7 @@ exports.filterArtists = async (req, res) => {
       matchedArtists: artists.map((artist) => ({
         artistId: artist.artistId,
         instrument: artist.instrument,
-        budget: artist.bubble,
+        budget: artist.budget, // Fixed typo: 'bubble' to 'budget'
       })),
       total: totalArtists,
       page: pageNum,

@@ -1,205 +1,249 @@
- const Booking = require('../models/booking');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
+const Booking = require('../models/booking');
+const Event = require('../../Host/models/Events/event');
+const ArtistProfile =require('../../Artist/models/Profile/profile')
+const Artist = require("../../Artist/models/Auth/Auth")
+// Initialize Razorpay instance
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
-// @desc    Create a new booking
-// @route   POST /api/bookings
+// @desc    Create a Razorpay order
+// @route   POST /api/bookings/create-order
 // @access  Private
-const createBooking =  (async (req, res) => {
-  const { artistId, hostId, date_time, invoices } = req.body;
+const createOrder = async (req, res) => {
+  const { amount, currency, eventId, artistId } = req.body;
+  console.log('Create order request received:', {
+    amount,
+    currency,
+    eventId,
+    artistId,
+    timestamp: new Date().toISOString(),
+  });
 
   // Validate input
-  if (!artistId || !hostId || !date_time || !invoices || !invoices.total) {
+  if (!amount || !currency || !eventId || !artistId) {
+    console.error('Validation failed for create-order:', {
+      hasAmount: !!amount,
+      hasCurrency: !!currency,
+      hasEventId: !!eventId,
+      hasArtistId: !!artistId,
+      timestamp: new Date().toISOString(),
+    });
     res.status(400);
     throw new Error('Missing required fields');
   }
 
-  // Calculate payment amounts
-  const firstPaymentAmount = invoices.total * 0.2;
-  const secondPaymentAmount = invoices.total * 0.8;
-
-  const booking = await Booking.create({
-    artistId,
-    hostId,
-    date_time,
-    invoices: {
-      subtotal: invoices.subtotal || 0,
-      platform_fees: invoices.platform_fees || 0,
-      taxes: invoices.taxes || 0,
-      total: invoices.total
-    },
-    payment_status: 'pending',
-    first_payment: {
-      amount: firstPaymentAmount,
-      status: 'pending',
-      date: null
-    },
-    second_payment: {
-      amount: secondPaymentAmount,
-      status: 'pending',
-      date: null
-    }
-  });
-
-  res.status(201).json({
-    success: true,
-    data: booking
-  });
-});
-
-// @desc    Get all bookings
-// @route   GET /api/bookings
-// @access  Private
-const getAllBookings =  (async (req, res) => {
-  const bookings = await Booking.find()
-    .populate('artistId', 'name')
-    .populate('hostId', 'name')
-    .lean();
-  res.status(200).json({
-    success: true,
-    data: bookings
-  });
-});
-
-// @desc    Get a single booking by ID
-// @route   GET /api/bookings/:id
-// @access  Private
-const getBookingById =  (async (req, res) => {
-  const booking = await Booking.findById(req.params.id)
-    .populate('artistId', 'name')
-    .populate('hostId', 'name')
-    .lean();
-
-  if (!booking) {
-    res.status(404);
-    throw new Error('Booking not found');
+  // Validate amount
+  if (!Number.isInteger(amount) || amount <= 0) {
+    console.error('Invalid amount:', { amount, timestamp: new Date().toISOString() });
+    res.status(400);
+    throw new Error('Amount must be a positive integer in paise');
   }
 
-  res.status(200).json({
-    success: true,
-    data: booking
-  });
-});
-
-// @desc    Update a booking by ID
-// @route   PUT /api/bookings/:id
-// @access  Private
-const updateBooking =  (async (req, res) => {
-  const { artistId, hostId, date_time, invoices, payment_status } = req.body;
-
-  const booking = await Booking.findById(req.params.id);
-
-  if (!booking) {
-    res.status(404);
-    throw new Error('Booking not found');
-  }
-
-  // Update fields if provided
-  if (artistId) booking.artistId = artistId;
-  if (hostId) booking.hostId = hostId;
-  if (date_time) booking.date_time = date_time;
-  if (invoices) {
-    booking.invoices = {
-      subtotal: invoices.subtotal || booking.invoices.subtotal,
-      platform_fees: invoices.platform_fees || booking.invoices.platform_fees,
-      taxes: invoices.taxes || booking.invoices.taxes,
-      total: invoices.total || booking.invoices.total
+  try {
+    const options = {
+      amount, // Amount in paise
+      currency,
+      receipt: `booking_${Date.now()}`,
     };
-    // Recalculate payment amounts if total changes
-    if (invoices.total) {
-      booking.first_payment.amount = invoices.total * 0.2;
-      booking.second_payment.amount = invoices.total * 0.8;
-    }
+    console.log('Creating Razorpay order with options:', {
+      options,
+      timestamp: new Date().toISOString(),
+    });
+
+    const order = await razorpay.orders.create(options);
+    console.log('Razorpay order created:', {
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating Razorpay order:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+    });
+    res.status(500);
+    throw new Error('Failed to create order');
   }
-  if (payment_status) booking.payment_status = payment_status;
+};
 
-  const updatedBooking = await booking.save();
-
-  res.status(200).json({
-    success: true,
-    data: updatedBooking
-  });
-});
-
-// @desc    Delete a booking by ID
-// @route   DELETE /api/bookings/:id
+// @desc    Verify Razorpay payment and create booking
+// @route   POST /api/bookings/verify-payment
 // @access  Private
-const deleteBooking =  (async (req, res) => {
-  const booking = await Booking.findById(req.params.id);
-
-  if (!booking) {
-    res.status(404);
-    throw new Error('Booking not found');
-  }
-
-  await booking.deleteOne();
-
-  res.status(200).json({
-    success: true,
-    message: 'Booking deleted successfully'
+const verifyPayment = async (req, res) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, eventId, artistId, invoices } = req.body;
+  const hostId = req.user.hostId;
+  console.log('Verify payment request received:', {
+    razorpay_order_id,
+    razorpay_payment_id,
+    eventId,
+    artistId,
+    invoices,
+    hostId,
+    timestamp: new Date().toISOString(),
   });
-});
 
-// @desc    Update payment status for first or second payment
-// @route   PATCH /api/bookings/:id/payment
-// @access  Private
-const updatePaymentStatus =  (async (req, res) => {
-  const { payment_type, status } = req.body;
-
-  if (!['first_payment', 'second_payment'].includes(payment_type)) {
+  // Validate input
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !eventId || !artistId || !invoices || !invoices.total) {
+    console.error('Validation failed for verify-payment:', {
+      hasOrderId: !!razorpay_order_id,
+      hasPaymentId: !!razorpay_payment_id,
+      hasSignature: !!razorpay_signature,
+      hasEventId: !!eventId,
+      hasArtistId: !!artistId,
+      hasInvoices: !!invoices,
+      hasTotal: !!invoices?.total,
+      timestamp: new Date().toISOString(),
+    });
     res.status(400);
-    throw new Error('Invalid payment type');
+    throw new Error('Missing required fields');
   }
 
-  if (!['pending', 'completed', 'failed'].includes(status)) {
+  // Validate invoices.total is a number
+  if (isNaN(invoices.total) || invoices.total <= 0) {
+    console.error('Invalid invoices.total:', {
+      total: invoices.total,
+      timestamp: new Date().toISOString(),
+    });
     res.status(400);
-    throw new Error('Invalid payment status');
+    throw new Error('Invalid total amount');
   }
 
-  const booking = await Booking.findById(req.params.id);
-
-  if (!booking) {
-    res.status(404);
-    throw new Error('Booking not found');
-  }
-
-  // Update payment status and date
-  booking[payment_type].status = status;
-  if (status === 'completed' || status === 'failed') {
-    booking[payment_type].date = new Date();
-  }
-
-  // Update overall payment status
-  if (
-    booking.first_payment.status === 'completed' &&
-    booking.second_payment.status === 'completed'
-  ) {
-    booking.payment_status = 'completed';
-  } else if (
-    booking.first_payment.status === 'completed' ||
-    booking.second_payment.status === 'completed'
-  ) {
-    booking.payment_status = 'partial';
-  } else if (
-    booking.first_payment.status === 'failed' ||
-    booking.second_payment.status === 'failed'
-  ) {
-    booking.payment_status = 'failed';
-  } else {
-    booking.payment_status = 'pending';
-  }
-
-  const updatedBooking = await booking.save();
-
-  res.status(200).json({
-    success: true,
-    data: updatedBooking
+  // Verify Razorpay signature
+  const generatedSignature = crypto
+    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+    .digest('hex');
+  console.log('Signature verification:', {
+    generatedSignature,
+    razorpay_signature,
+    timestamp: new Date().toISOString(),
   });
-});
+
+  if (generatedSignature !== razorpay_signature) {
+    console.error('Invalid payment signature:', {
+      generatedSignature,
+      razorpay_signature,
+      timestamp: new Date().toISOString(),
+    });
+    res.status(400);
+    throw new Error('Invalid payment signature');
+  }
+
+  // Validate event and artist existence
+  console.log('Validating event:', { eventId, timestamp: new Date().toISOString() });
+  const event = await Event.findById(eventId);
+  console.log('Event lookup result:', {
+    event: event ? event._id : null,
+    timestamp: new Date().toISOString(),
+  });
+  if (!event) {
+    console.error('Event not found:', {
+      eventId,
+      timestamp: new Date().toISOString(),
+    });
+    res.status(404);
+    throw new Error('Event not found');
+  }
+
+  console.log('Validating artist:', { artistId, timestamp: new Date().toISOString() });
+  const artist = await ArtistProfile.findOne({ artistId: artistId });
+  console.log('Artist lookup result:', {
+    artist: artist ? artist._id : null,
+    timestamp: new Date().toISOString(),
+  });
+  if (!artist) {
+    console.error('Artist not found:', {
+      artistId,
+      timestamp: new Date().toISOString(),
+    });
+    res.status(404);
+    throw new Error('Artist not found');
+  }
+
+  // Start a session for atomic updates
+  const session = await Booking.startSession();
+  session.startTransaction();
+
+  try {
+    console.log('Attempting to create booking:', {
+      artistId,
+      hostId,
+      eventId,
+      invoices,
+      timestamp: new Date().toISOString(),
+    });
+    const booking = await Booking.create(
+      [{
+        artistId,
+        hostId,
+        eventId,
+        date_time: new Date(),
+        invoices: {
+          subtotal: Number(invoices.subtotal) || 0,
+          platform_fees: Number(invoices.platform_fees) || 0,
+          taxes: Number(invoices.taxes) || 0,
+          total: Number(invoices.total),
+        },
+        payment_status: 'completed',
+        razorpay_order_id,
+        razorpay_payment_id,
+      }],
+      { session }
+    );
+    console.log('Booking created:', {
+      bookingId: booking[0]._id,
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log('Updating event with artist:', { eventId, artistId, timestamp: new Date().toISOString() });
+    const updatedEvent = await Event.findByIdAndUpdate(
+      eventId,
+      { $addToSet: { assignedArtists: artistId } },
+      { session, new: true }
+    );
+    console.log('Event updated with artist:', {
+      eventId,
+      artistId,
+      assignedArtists: updatedEvent.assignedArtists,
+      timestamp: new Date().toISOString(),
+    });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(201).json({
+      success: true,
+      data: booking[0],
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error('Error verifying payment or creating booking:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+    });
+    res.status(400);
+    throw new Error('Failed to verify payment or create booking');
+  }
+};
 
 module.exports = {
-  createBooking,
-  getAllBookings,
-  getBookingById,
-  updateBooking,
-  deleteBooking,
-  updatePaymentStatus
+  createOrder,
+  verifyPayment,
 };

@@ -438,7 +438,7 @@ exports.getArtistProfile= async (req, res) => {
     const profile = await ArtistProfile.findOne({ artistId })
       .populate("artistId")
       .populate("performanceUrlId", "venueName genre videoUrl")
-      .populate("AssignedEvents", "eventName date venue");
+      
 
     if (!profile) {
       return apiResponse(res, {
@@ -473,7 +473,7 @@ exports.getAllArtists = async (req, res) => {
     const artists = await ArtistProfile.find()
       .populate("artistId")
       .populate("performanceUrlId", "venueName genre videoUrl")
-      .populate("AssignedEvents", "eventName date venue");
+    
 
     if (!artists || artists.length === 0) {
       return apiResponse(res, {
