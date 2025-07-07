@@ -10,8 +10,7 @@ const userProfile = require("./User/Routes/userProfile");
 const userFavouriteEvent = require("./User/Routes/favouriteEvent");
 const userForgotPassword = require("./User/Routes/ForgotPassword");
 const userPaymentDetails = require("./User/Routes/paymentDetails");
-const guestRequest = require("./User/Routes/guestList");
-const eventDashboard = require("./User/Routes/event/eventDashboardRoutes");
+ const eventDashboard = require("./User/Routes/event/eventDashboardRoutes");
 const filterRoutesUser = require("./User/Routes/filter");
 
 // Artist Routes
@@ -24,8 +23,7 @@ const eventApplication = require("./Artist/Routes/eventApplication");
 const artistEvents = require("./Artist/Routes/event");
 const filterEvents = require("./Artist/Routes/filter");
 const artistForgotPassword = require("./Artist/Routes/forgotPassword");
-const respondGuestRequest = require("./Artist/Routes/respondtoGuestlist");
-const rateEvent = require("./Artist/Routes/Rating");
+ const rateEvent = require("./Artist/Routes/Rating");
 const likedEventRoutes = require("./Artist/Routes/likedEventRoutes");
 const savedEventRoutes = require("./Artist/Routes/savedEvent");
 
@@ -57,8 +55,8 @@ const bannerRoutes = require("./Admin/Routes/banner");
 
 const invoiceRoutes = require("./artistHostBooking/routes/invoiceRoutes");
 const bookingRoutes = require('./artistHostBooking/routes/bookingRoutes');
-const guestListRoutes = require('./guestList/routes/guestListRoutes');
-const chatNegotiationRoutes = require('./artistHostChat/Routes/chatNegotiationRoutes');
+ const chatNegotiationRoutes = require('./artistHostChat/Routes/chatNegotiationRoutes');
+ const guestListRoutes = require('./guestList/routes/guestListRoutes')
 const app = express();
 const PORT = process.env.PORT;
 
@@ -83,8 +81,7 @@ app.use("/api/user", [
   userFavouriteEvent,
   userForgotPassword,
   userPaymentDetails,
-  guestRequest,
-]);
+ ]);
 app.use("/api/user/ticket", ticketBookingRoutes);
 app.use("/api/user/eventDashboard", eventDashboard);
 app.use("/api/user/event", filterRoutesUser);
@@ -98,8 +95,7 @@ app.use("/api/artist", [
   eventApplication,
   filterEvents,
   artistForgotPassword,
-  respondGuestRequest,
-  rateEvent,
+   rateEvent,
 ]);
 app.use("/api/artist/profile", performanceGalleryRoutes);
 app.use("/api/artist/event", [likedEventRoutes, savedEventRoutes]);
@@ -121,7 +117,7 @@ app.use("/api/host", [
 app.use("/api/host/events", events);
 
 
-
+ 
 // Admin Routes
 app.use("/api/admin/auth", adminAuthentication);
 app.use("/api/admin", [
@@ -135,8 +131,9 @@ app.use("/api/admin", [
 app.use("/api/admin/banner", bannerRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use('/api/bookings', bookingRoutes);
-app.use('/api/guestList', guestListRoutes);
-app.use("/api/chat", chatNegotiationRoutes);
+ app.use("/api/chat", chatNegotiationRoutes);
+ app.use('/api/guest-list', guestListRoutes);
+
 // Start Server
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on http://localhost:${PORT}`)

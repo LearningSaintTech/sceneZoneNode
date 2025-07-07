@@ -1,30 +1,34 @@
+const mongoose = require('mongoose');
 const ChatNegotiation = require('../Model/ChatNegotiation');
 const Event = require('../../Host/models/Events/event');
 const ArtistAuthentication = require('../../Artist/models/Auth/Auth');
 const HostAuthentication = require('../../Host/models/Auth/Auth');
-const mongoose = require('mongoose');
 
 // Get all events for the logged-in user (host or artist)
 const getEvents = async (req, res) => {
-  console.log("qqwqwqwwqwqwqwqwqw")
   try {
-    const userId = req.user.hostId;
+    const userId = req.user.hostId || req.user.artistId;
     const userRole = req.user.role;
     console.log(`[${new Date().toISOString()}] Fetching events for user ${userId} with role ${userRole}`);
 
     let events;
     if (userRole === 'host') {
+      // Hosts: Fetch events they created
       events = await Event.find({ hostId: userId })
         .select('eventName eventDateTime venue status posterUrl')
         .sort({ eventDateTime: -1 });
       console.log(`[${new Date().toISOString()}] Found ${events.length} events for host ${userId}`);
     } else if (userRole === 'artist') {
-      const chats = await ChatNegotiation.find({ artistId: userId }).select('eventId');
-      const eventIds = chats.map(chat => chat.eventId);
-      console.log(`[${new Date().toISOString()}] Found ${chats.length} chats for artist ${userId}, retrieving events`);
-      events = await Event.find({ _id: { $in: eventIds } })
-        .select('eventName eventDateTime venue status')
-        .sort({ eventDateTime: -1 });
+      // Artists: Fetch events they are involved in via ChatNegotiation
+      const chats = await ChatNegotiation.find({ artistId: userId })
+        .select('eventId')
+        .populate({
+          path: 'eventId',
+          select: 'eventName eventDateTime venue status posterUrl',
+        });
+      events = chats
+        .filter(chat => chat.eventId) // Filter out null eventIds (in case of deleted events)
+        .map(chat => chat.eventId);
       console.log(`[${new Date().toISOString()}] Found ${events.length} events for artist ${userId}`);
     } else {
       console.warn(`[${new Date().toISOString()}] Invalid user role ${userRole} for user ${userId}`);
@@ -38,7 +42,7 @@ const getEvents = async (req, res) => {
   }
 };
 
-// Get all chats for a specific event
+// Get chats for a specific event (for hosts) or direct chat for an event (for artists)
 const getChatsForEvent = async (req, res) => {
   try {
     const { eventId } = req.params;
@@ -56,11 +60,42 @@ const getChatsForEvent = async (req, res) => {
       console.warn(`[${new Date().toISOString()}] Event ${eventId} not found`);
       return res.status(404).json({ message: 'Event not found' });
     }
+
     if (userRole === 'host' && event.hostId.toString() !== userId.toString()) {
       console.warn(`[${new Date().toISOString()}] Unauthorized access to event ${eventId} by host ${userId}`);
       return res.status(403).json({ message: 'Unauthorized access to event' });
     }
 
+    if (userRole === 'artist') {
+      // Artists: Fetch the single chat they are involved in for this event
+      const chat = await ChatNegotiation.findOne({ eventId, artistId: userId })
+        .populate({
+          path: 'artistId',
+          select: 'fullName profileImageUrl',
+          model: 'ArtistAuthentication',
+        })
+        .populate({
+          path: 'hostId',
+          select: 'fullName profileImageUrl',
+          model: 'HostAuthentication',
+        })
+        .populate({
+          path: 'messages.senderId',
+          select: 'fullName profileImageUrl',
+          model: 'HostAuthentication', // For artists, senderId in messages is typically the host
+        })
+        .select('artistId hostId messages lastMessageAt latestProposedPrice proposedBy isHostApproved isArtistApproved finalPrice isNegotiationComplete');
+
+      if (!chat) {
+        console.warn(`[${new Date().toISOString()}] No chat found for event ${eventId} and artist ${userId}`);
+        return res.status(404).json({ message: 'No chat found for this event' });
+      }
+
+      console.log(`[${new Date().toISOString()}] Returning chat ${chat._id} for artist ${userId} in event ${eventId}`);
+      return res.status(200).json(chat); // Return single chat object for artists
+    }
+
+    // Hosts: Fetch all chats for the event
     const chats = await ChatNegotiation.find({ eventId })
       .populate({
         path: 'artistId',
@@ -74,14 +109,9 @@ const getChatsForEvent = async (req, res) => {
       })
       .select('artistId hostId lastMessageAt latestProposedPrice proposedBy isHostApproved isArtistApproved finalPrice isNegotiationComplete')
       .sort({ lastMessageAt: -1 });
-    console.log(`[${new Date().toISOString()}] Found ${chats.length} chats for event ${eventId}`);
 
-    const filteredChats = userRole === 'artist'
-      ? chats.filter(chat => chat.artistId._id.toString() === userId.toString())
-      : chats;
-    console.log(`[${new Date().toISOString()}] Returning ${filteredChats.length} chats for ${userRole} ${userId}`);
-
-    res.status(200).json(filteredChats);
+    console.log(`[${new Date().toISOString()}] Found ${chats.length} chats for event ${eventId} for host ${userId}`);
+    res.status(200).json(chats); // Return array of chats for hosts
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error fetching chats for event ${req.params.eventId}: ${error.message}`);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -189,9 +219,8 @@ const sendMessage = async (req, res) => {
     chat.proposedBy = userRole;
     chat.isHostApproved = userRole === 'host';
     chat.isArtistApproved = userRole === 'artist';
-    console.log(`[${new Date().toISOString()}] Updated latest proposed price to $${proposedPrice} by ${userRole} in chat ${chatId}, auto-approved by proposer`);
-
     chat.lastMessageAt = new Date();
+
     await chat.save();
     console.log(`[${new Date().toISOString()}] Price proposal $${proposedPrice} sent in chat ${chatId} by user ${userId}`);
 
@@ -219,7 +248,7 @@ const sendMessage = async (req, res) => {
   }
 };
 
-// Start a new chat negotiation
+// Start a new chat negotiation (only for hosts)
 const startChat = async (req, res) => {
   try {
     const { eventId, artistId } = req.body;
@@ -242,6 +271,7 @@ const startChat = async (req, res) => {
       console.warn(`[${new Date().toISOString()}] Event ${eventId} not found`);
       return res.status(404).json({ message: 'Event not found' });
     }
+
     if (event.hostId.toString() !== hostId.toString()) {
       console.warn(`[${new Date().toISOString()}] Unauthorized attempt to start chat for event ${eventId} by host ${hostId}`);
       return res.status(403).json({ message: 'Unauthorized to start chat for this event' });
@@ -314,6 +344,7 @@ const approvePrice = async (req, res) => {
       console.warn(`[${new Date().toISOString()}] Unauthorized price approval attempt in chat ${chatId} by user ${userId}`);
       return res.status(403).json({ message: 'Unauthorized access to chat' });
     }
+    
 
     if (chat.isNegotiationComplete) {
       console.warn(`[${new Date().toISOString()}] Attempt to approve price in completed negotiation chat ${chatId}`);

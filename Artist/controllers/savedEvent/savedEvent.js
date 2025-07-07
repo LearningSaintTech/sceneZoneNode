@@ -89,7 +89,16 @@ exports.getAllSavedEvents = async (req, res) => {
   const artistId = req.user.artistId;
 
   try {
-    const savedEvents = await SavedEvent.find({ artistId });
+    const savedEvents = await SavedEvent.find({ artistId }) 
+      .populate({
+        path: "eventId",
+        populate: [
+          { path: "hostId", select: "name email" }, // Populate host details
+          { path: "assignedArtists", select: "name email" }, // Populate assigned artists
+          { path: "guestList.userId", select: "name email" }, // Populate guest list users
+        ],
+        select: "eventName venue eventDateTime genre about location budget isSoundSystem posterUrl status isCompleted isCancelled Rating eventRatings guestLinkUrl showStatus Discount assignedArtists totalViewed totalRegistered totalLikes ticketSetting eventGuestEnabled guestList",
+      });
 
     return apiResponse(res, {
       success: true,

@@ -1,10 +1,10 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
 const eventSchema = new mongoose.Schema(
   {
     hostId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "HostAuthentication",
+      ref: 'HostAuthentication',
       required: true,
     },
     eventName: {
@@ -23,9 +23,8 @@ const eventSchema = new mongoose.Schema(
       type: [Date],
       required: true,
       validate: {
-        validator: (dateTimes) =>
-          dateTimes.every((dt) => !isNaN(new Date(dt).getTime())),
-        message: "Invalid date-time provided in eventDateTime.",
+        validator: (dateTimes) => dateTimes.every((dt) => !isNaN(new Date(dt).getTime())),
+        message: 'Invalid date-time provided in eventDateTime.',
       },
     },
     genre: [
@@ -37,10 +36,10 @@ const eventSchema = new mongoose.Schema(
       },
     ],
     about: {
-      type: String, 
+      type: String,
       trim: true,
-      minlength: [3, "About section must be at least 3 characters long."],
-      maxlength: [1000, "About section cannot exceed 1000 characters."],
+      minlength: [3, 'About section must be at least 3 characters long.'],
+      maxlength: [1000, 'About section cannot exceed 1000 characters.'],
     },
     location: {
       type: String,
@@ -48,7 +47,7 @@ const eventSchema = new mongoose.Schema(
     budget: {
       type: Number,
       required: true,
-      min: [0, "Budget cannot be negative."],
+      min: [0, 'Budget cannot be negative.'],
     },
     isSoundSystem: {
       type: Boolean,
@@ -60,8 +59,8 @@ const eventSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
     },
     isCompleted: {
       type: Boolean,
@@ -82,11 +81,11 @@ const eventSchema = new mongoose.Schema(
         userId: {
           type: mongoose.Schema.Types.ObjectId,
           required: true,
-          refPath: "eventRatings.userType",
+          refPath: 'eventRatings.userType',
         },
         userType: {
           type: String,
-          enum: ["User", "Artist"],
+          enum: ['User', 'Artist'],
           required: true,
         },
         rating: {
@@ -107,7 +106,7 @@ const eventSchema = new mongoose.Schema(
           date: String,
           status: {
             type: String,
-            enum: ["recent", "upcoming"],
+            enum: ['recent', 'upcoming'],
           },
         },
       ],
@@ -118,86 +117,86 @@ const eventSchema = new mongoose.Schema(
         type: Number,
         required: true,
         default: 0,
-        min: [0, "Discount cannot be negative."],
+        min: [0, 'Discount cannot be negative.'],
       },
       level2: {
         type: Number,
         required: true,
         default: 0,
-        min: [0, "Discount cannot be negative."],
+        min: [0, 'Discount cannot be negative.'],
       },
       level3: {
         type: Number,
         required: true,
         default: 0,
-        min: [0, "Discount cannot be negative."],
+        min: [0, 'Discount cannot be negative.'],
       },
     },
     assignedArtists: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "ArtistAuthentication",
+        ref: 'ArtistAuthentication',
       },
     ],
     totalViewed: {
       type: Number,
       default: 0,
-      min: [0, "Total viewed cannot be negative."],
+      min: [0, 'Total viewed cannot be negative.'],
     },
     totalRegistered: {
       type: Number,
       default: 0,
-      min: [0, "Total registered cannot be negative."],
+      min: [0, 'Total registered cannot be negative.'],
     },
     totalLikes: {
       type: Number,
       default: 0,
-      min: [0, "Total likes cannot be negative."],
+      min: [0, 'Total likes cannot be negative.'],
     },
     ticketSetting: {
       ticketType: {
         type: String,
-        enum: ["paid", "free"],
-        default: "free",
+        enum: ['paid', 'free'],
+        default: 'free',
       },
       salesStart: {
         type: Date,
         validate: {
           validator: (date) => !date || !isNaN(new Date(date).getTime()),
-          message: "Invalid sales start date.",
+          message: 'Invalid sales start date.',
         },
       },
       salesEnd: {
         type: Date,
         validate: {
           validator: (date) => !date || !isNaN(new Date(date).getTime()),
-          message: "Invalid sales end date.",
+          message: 'Invalid sales end date.',
         },
       },
       gstType: {
         type: String,
         trim: true,
-        enum: ["inclusive", "exclusive", "none"],
-        default: "none",
+        enum: ['inclusive', 'exclusive', 'none'],
+        default: 'none',
         required: function () {
-          return this.ticketType === "paid";
+          return this.ticketType === 'paid';
         },
       },
       price: {
         type: Number,
         required: function () {
-          return this.ticketType === "paid";
+          return this.ticketType === 'paid';
         },
-        min: [0, "Price cannot be negative."],
+        min: [0, 'Price cannot be negative.'],
       },
       totalQuantity: {
         type: Number,
-        min: [1, "Total quantity must be at least 1."],
+        min: [1, 'Total quantity must be at least 1.'],
       },
       ticketStatus: {
         type: String,
-        enum: ["live", "comingsoon", "soldout"],
-        default: "comingsoon",
+        enum: ['live', 'comingsoon', 'soldout'],
+        default: 'comingsoon',
       },
       isEnabled: {
         type: Boolean,
@@ -212,12 +211,12 @@ const eventSchema = new mongoose.Schema(
       {
         userId: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "UserAuthentication",
+          ref: 'UserAuthentication',
           required: false,
         },
         discountLevel: {
           type: String,
-          enum: ["level1", "level2", "level3"],
+          enum: ['level1', 'level2', 'level3'],
           required: false,
         },
       },
@@ -228,7 +227,6 @@ const eventSchema = new mongoose.Schema(
   }
 );
 
-// Index for faster queries
 eventSchema.index({ eventName: 1, eventDateTime: 1 });
 
-module.exports = mongoose.model("Event", eventSchema);
+module.exports = mongoose.model('Event', eventSchema);

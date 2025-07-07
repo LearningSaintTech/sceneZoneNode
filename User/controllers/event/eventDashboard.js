@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const Event = mongoose.model('Event');
+const Event = require("../../../Host/models/Events/event"); // Adjust path to your Event model
 
 // Controller to increment totalViewed
 const incrementView = async (req, res) => {

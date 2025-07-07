@@ -157,11 +157,11 @@ exports.getAppliedEvents = async (req, res) => {
 exports.removeAppliedEvent = async (req, res) => {
   try {
     console.log("Starting removeAppliedEvent: Received request", {
-      params: req.params,
+      body: req.body,
       user: req.user,
     });
 
-    const { eventId } = req.params;
+    const { eventId } = req.body;
     const artistId = req.user.artistId;
 
     // Validate eventId
