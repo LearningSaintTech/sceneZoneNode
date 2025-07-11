@@ -9,7 +9,8 @@ const {
   getLatestEvents,
   updateEventApplicationStatus,
   getArtistStatusOfEvent,
-  getEventGuestListByDiscount
+  getEventGuestListByDiscount,
+  getAllEventsForUsers
 } = require("../controllers/Events/event");
 
 const { authMiddleware } = require("../../middlewares/authMiddleware");
@@ -47,7 +48,7 @@ router.delete(
   deleteEvent
 );
 
-router.get("/get-all-events", authMiddleware(["host"]), getAllEvents);
+router.get("/get-all-events",  getAllEventsForUsers);
 
 
 
@@ -78,5 +79,9 @@ router.get(
   getEventGuestListByDiscount
 );
 
-
+router.get(
+  "/get-all-user-events",
+  // authMiddleware(["user"]),
+  getAllEventsForUsers
+);
 module.exports = router;

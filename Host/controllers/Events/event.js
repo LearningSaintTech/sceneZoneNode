@@ -267,31 +267,9 @@ exports.createEvent = async (req, res) => {
 // GET Events by Host ID
 exports.getAllEvents = async (req, res) => {
   try {
-    const hostId = req.user?.hostId;
+    const hostId = req.user.hostId;
 
-    // Validate hostId
-    if (!hostId || !mongoose.isValidObjectId(hostId)) {
-      return apiResponse(res, {
-        success: false,
-        message: "Invalid or missing hostId",
-        statusCode: 400,
-      });
-    }
-
-    // Query events and populate assignedArtists
-    const events = await Event.find({ hostId }).populate({
-      path: "assignedArtists",
-      match: { _id: { $exists: true } },
-    });
-
-    // Handle empty results
-    if (!events || events.length === 0) {
-      return apiResponse(res, {
-        success: true,
-        message: "No events found for this host",
-        data: [],
-      });
-    }
+    const events = await Event.find({ hostId }).populate("assignedArtists");
 
     return apiResponse(res, {
       success: true,
@@ -311,36 +289,22 @@ exports.getAllEvents = async (req, res) => {
 
 
 // GET Single Event by ID
-
-
 exports.getEventById = async (req, res) => {
   try {
-    const hostId = req.user?.hostId;
     const eventId = req.params.eventId;
-    console.log(eventId);
-    console.log(hostId);
-    // Validate inputs
-    if (!eventId || !mongoose.isValidObjectId(eventId)) {
+        const user = req.user;
+
+    // Validate event ID
+    if (!mongoose.isValidObjectId(eventId)) {
       return apiResponse(res, {
         success: false,
-        message: "Invalid or missing eventId",
-        statusCode: 400,
-      });
-    }
-    if (!hostId || !mongoose.isValidObjectId(hostId)) {
-      return apiResponse(res, {
-        success: false,
-        message: "Invalid or missing hostId",
+        message: "Invalid event ID.",
         statusCode: 400,
       });
     }
 
-    // Fetch event with populated assignedArtists
-    const event = await Event.findById(eventId).populate({
-      path: "assignedArtists",
-      match: { _id: { $exists: true } },
-    });
-
+    // Fetch event with populated fields
+    const event = await Event.findById(eventId).populate("assignedArtists").populate("hostId");
     if (!event) {
       return apiResponse(res, {
         success: false,
@@ -349,18 +313,24 @@ exports.getEventById = async (req, res) => {
       });
     }
 
-    // Verify host ownership
-    if (event.hostId.toString() !== hostId) {
-      return apiResponse(res, {
-        success: false,
-        message: "Unauthorized: You are not the host of this event",
-        statusCode: 403,
-      });
-    }
 
-    // Ensure assignedArtists is an array
-    if (!Array.isArray(event.assignedArtists)) {
-      event.assignedArtists = [];
+    // Update showStatus for each event date
+    if (Array.isArray(event.eventDateTime)) {
+      const today = new Date();
+      const showStatusArray = event.eventDateTime
+        .map((dt) => {
+          const parsedDate = new Date(dt);
+          if (!isNaN(parsedDate)) {
+            const status = parsedDate < today ? "recent" : "upcoming";
+            return { date: parsedDate.toISOString().split("T")[0], status };
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      // Save updated showStatus
+      event.showStatus = showStatusArray;
+      await event.save();
     }
 
     return apiResponse(res, {
@@ -1163,6 +1133,70 @@ exports.getEventGuestListByDiscount = async (req, res) => {
     return apiResponse(res, {
       success: false,
       message: "Failed to fetch event guest list",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};
+exports.getAllEventsForUsers = async (req, res) => {
+  try {
+    console.log("Starting getAllEventsForUsers: Received request", {
+      userId: req.user?.userId,
+      role: req.user?.role,
+      query: req.query,
+    });
+
+    const limit = parseInt(req.query.limit) || 10;
+    const page = parseInt(req.query.page) || 1;
+    const skip = (page - 1) * limit;
+    console.log("Parsed pagination parameters", { limit, page, skip });
+
+    // Fetch all events without any criteria
+    console.log("Fetching all events from database");
+    const events = await Event.find({})
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate({
+        path: "assignedArtists",
+        select: "name",
+      })
+      .populate({
+        path: "hostId",
+        select: "name email",
+      })
+      .select("eventName venue eventDateTime genre posterUrl showStatus");
+    console.log("Events fetched successfully", {
+      eventCount: events.length,
+      eventIds: events.map((event) => event._id.toString()),
+    });
+
+    console.log("Counting total events for pagination");
+    const totalEvents = await Event.countDocuments({});
+    console.log("Total events counted", { totalEvents });
+
+    return apiResponse(res, {
+      success: true,
+      message: "Events fetched successfully",
+      data: events,
+      pagination: {
+        total: totalEvents,
+        page,
+        limit,
+        totalPages: Math.ceil(totalEvents / limit),
+      },
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Get all events for users error:", {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.userId,
+      query: req.query,
+    });
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to fetch events",
       data: { error: error.message },
       statusCode: 500,
     });

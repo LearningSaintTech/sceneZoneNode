@@ -13,16 +13,19 @@
     "@aws-sdk/client-s3": "^3.797.0",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
+    "canvas": "^3.1.2",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "express-validator": "^7.2.1",
     "firebase-admin": "^13.4.0",
+    "jsbarcode": "^3.12.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.14.0",
     "multer": "^1.4.5-lts.2",
     "nodemailer": "^7.0.3",
+    "qrcode": "^1.5.4",
     "razorpay": "^2.9.6"
   }
 }

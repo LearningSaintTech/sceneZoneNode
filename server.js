@@ -10,7 +10,7 @@ const userProfile = require("./User/Routes/userProfile");
 const userFavouriteEvent = require("./User/Routes/favouriteEvent");
 const userForgotPassword = require("./User/Routes/ForgotPassword");
 const userPaymentDetails = require("./User/Routes/paymentDetails");
- const eventDashboard = require("./User/Routes/event/eventDashboardRoutes");
+const eventDashboard = require("./User/Routes/event/eventDashboardRoutes");
 const filterRoutesUser = require("./User/Routes/filter");
 
 // Artist Routes
@@ -23,7 +23,7 @@ const eventApplication = require("./Artist/Routes/eventApplication");
 const artistEvents = require("./Artist/Routes/event");
 const filterEvents = require("./Artist/Routes/filter");
 const artistForgotPassword = require("./Artist/Routes/forgotPassword");
- const rateEvent = require("./Artist/Routes/Rating");
+const rateEvent = require("./Artist/Routes/Rating");
 const likedEventRoutes = require("./Artist/Routes/likedEventRoutes");
 const savedEventRoutes = require("./Artist/Routes/savedEvent");
 
@@ -39,8 +39,6 @@ const hostForgotPassword = require("./Host/Routes/forgotPassword");
 const hostPaymentDetails = require("./Host/Routes/paymentDetails");
 const rateArtist = require("./Host/Routes/Rating");
 const ticketSettingRoutes = require("./Host/Routes/ticketSetting");
-const ticketBookingRoutes = require("./Host/Routes/ticketBooking");
-
 
 // Admin Routes
 const adminAuthentication = require("./Admin/Routes/Auth");
@@ -52,11 +50,15 @@ const appUsers = require("./Admin/Routes/allUsers");
 const adminForgotPassword = require("./Admin/Routes/forgotPassword");
 const bannerRoutes = require("./Admin/Routes/banner");
 
-
 const invoiceRoutes = require("./artistHostBooking/routes/invoiceRoutes");
-const bookingRoutes = require('./artistHostBooking/routes/bookingRoutes');
- const chatNegotiationRoutes = require('./artistHostChat/Routes/chatNegotiationRoutes');
- const guestListRoutes = require('./guestList/routes/guestListRoutes')
+const bookingRoutes = require("./artistHostBooking/routes/bookingRoutes");
+const chatNegotiationRoutes = require("./artistHostChat/Routes/chatNegotiationRoutes");
+const guestListRoutes = require("./guestList/routes/guestListRoutes");
+
+// Event Host Routes
+const eventHostInvoiceRoutes = require("./eventHostBooking/routes/adminRoutes");
+ const eventHostTicketBookingRoutes = require("./eventHostBooking/routes/ticketBookingRoutes");
+
 const app = express();
 const PORT = process.env.PORT;
 
@@ -81,8 +83,7 @@ app.use("/api/user", [
   userFavouriteEvent,
   userForgotPassword,
   userPaymentDetails,
- ]);
-app.use("/api/user/ticket", ticketBookingRoutes);
+]);
 app.use("/api/user/eventDashboard", eventDashboard);
 app.use("/api/user/event", filterRoutesUser);
 
@@ -95,7 +96,7 @@ app.use("/api/artist", [
   eventApplication,
   filterEvents,
   artistForgotPassword,
-   rateEvent,
+  rateEvent,
 ]);
 app.use("/api/artist/profile", performanceGalleryRoutes);
 app.use("/api/artist/event", [likedEventRoutes, savedEventRoutes]);
@@ -116,8 +117,6 @@ app.use("/api/host", [
 ]);
 app.use("/api/host/events", events);
 
-
- 
 // Admin Routes
 app.use("/api/admin/auth", adminAuthentication);
 app.use("/api/admin", [
@@ -130,9 +129,13 @@ app.use("/api/admin", [
 ]);
 app.use("/api/admin/banner", bannerRoutes);
 app.use("/api/invoices", invoiceRoutes);
-app.use('/api/bookings', bookingRoutes);
- app.use("/api/chat", chatNegotiationRoutes);
- app.use('/api/guest-list', guestListRoutes);
+app.use("/api/bookings", bookingRoutes);
+app.use("/api/chat", chatNegotiationRoutes);
+app.use("/api/guest-list", guestListRoutes);
+
+// Event Host Routes
+app.use("/api/eventhost/invoices", eventHostInvoiceRoutes);
+ app.use("/api/eventhost/tickets", eventHostTicketBookingRoutes);
 
 // Start Server
 app.listen(PORT, "0.0.0.0", () =>

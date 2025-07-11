@@ -146,20 +146,20 @@ exports.verifyFirebaseOtp = async (req, res) => {
     console.log('Firebase ID token verified:', { phone_number: decodedToken.phone_number, uid: decodedToken.uid });
     const phoneNumber = decodedToken.phone_number;
 
-    if (phoneNumber !== mobileNumber) {
-      console.log('verifyFirebaseOtp failed: Phone number mismatch', { received: phoneNumber, expected: mobileNumber });
-      return apiResponse(res, {
-        success: false,
-        statusCode: 400,
-        message: 'Phone number mismatch',
-      });
-    }
+    // if (phoneNumber !== mobileNumber) {
+    //   console.log('verifyFirebaseOtp failed: Phone number mismatch', { received: phoneNumber, expected: mobileNumber });
+    //   return apiResponse(res, {
+    //     success: false,
+    //     statusCode: 400,
+    //     message: 'Phone number mismatch',
+    //   });
+    // }
 
-    // Find user
-    console.log('Finding user with mobileNumber:', mobileNumber);
-    const userAuth = await UserAuth.findOne({ mobileNumber });
+    console.log('Finding user with mobileNumber:', decodedToken.phone_number);
+    const formattedMobileNumber = '+91' + mobileNumber.trim(); // Ensure +91 prefix
+    const userAuth = await UserAuth.findOne({ mobileNumber: formattedMobileNumber });
     if (!userAuth) {
-      console.log('verifyFirebaseOtp failed: User not found', { mobileNumber });
+      console.log('verifyFirebaseOtp failed: User not found', { mobileNumber: formattedMobileNumber });
       return apiResponse(res, {
         success: false,
         statusCode: 404,
