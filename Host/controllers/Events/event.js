@@ -1,5 +1,6 @@
 const Event = require("../../models/Events/event");
 const Booking = require("../../../artistHostBooking/models/booking");
+const ArtistProfile = require("../../../Artist/models/Profile/profile");
 
 const EventInvitation = require("../../models/InviteArtist/inviteArtist");
 const EventApplication = require("../../../Artist/models/EventApplication/eventApplication");
@@ -1382,11 +1383,11 @@ exports.markEventCompleted = async (req, res) => {
   }
 };
 
-// Get All Booked Artists for an Event
+ 
 exports.getBookedArtists = async (req, res) => {
-  console.log("Starting getBookedArtists: Received request", {
-    hostId: req.user.hostId,
-    eventId: req.params.eventId,
+  console.log("🔵 [getBookedArtists] Request received", {
+    hostId: req.user?.hostId,
+    eventId: req.params?.eventId,
     timestamp: new Date().toISOString(),
   });
 
@@ -1394,109 +1395,163 @@ exports.getBookedArtists = async (req, res) => {
     const hostId = req.user.hostId;
     const eventId = req.params.eventId;
 
-    // Validate eventId
-    console.log("Validating eventId:", { eventId });
-    if (!mongoose.isValidObjectId(eventId)) {
-      console.warn("Invalid eventId provided:", { eventId });
-      return apiResponse(res, {
-        success: false,
-        message: "Invalid event ID.",
-        statusCode: 400,
-      });
-    }
+    console.log("🟡 [getBookedArtists] Extracted from request", {
+      hostId,
+      eventId,
+      body: req.body,
+    });
 
-    // Check if event exists and belongs to host
-    console.log("Fetching event:", { eventId, hostId });
+    // Step 1: Fetch the event and validate hostId
     const event = await Event.findOne({ _id: eventId, hostId });
+
     if (!event) {
-      console.warn("Event not found or unauthorized:", { eventId, hostId });
-      return apiResponse(res, {
-        success: false,
-        message: "Event not found or you don't have permission to view its bookings.",
-        statusCode: 404,
+      console.warn("⚠️ [getBookedArtists] Event not found or not associated with this host", {
+        eventId,
+        hostId,
       });
+      return res.status(404).json({ success: false, message: "Event not found" });
     }
-    console.log("Event found:", {
-      eventId,
-      eventName: event.eventName,
+
+    const assignedArtistIds = event.assignedArtists || [];
+
+    console.log("✅ [getBookedArtists] Event found", {
+      eventId: event._id.toString(),
+      assignedArtistIds,
     });
 
-    // Find bookings for the event
-    console.log("Fetching bookings for event:", { eventId });
-    const bookings = await Booking.find({ eventId })
-      .populate({
-        path: "artistId",
-        select: "fullName mobileNumber",
-        populate: {
-          path: "artistId",
-          select: "profileImageUrl email artistType instrument",
-          model: "ArtistProfile",
-        },
-      })
-      .select("artistId date_time payment_status");
-    console.log("Bookings fetched:", {
-      eventId,
-      bookingCount: bookings.length,
-      bookingIds: bookings.map((b) => b._id.toString()),
-    });
+    // Step 2: Fetch all bookings for the event
+    const bookings = await Booking.find({ eventId });
 
     if (!bookings.length) {
-      console.log("No bookings found for event:", { eventId });
-      return apiResponse(res, {
-        success: true,
-        message: "No booked artists found for this event.",
-        data: [],
-        statusCode: 200,
+      console.log("📭 [getBookedArtists] No bookings found for this event", {
+        eventId,
       });
+      return res.status(200).json({ success: true, message: "No bookings found", data: [] });
     }
 
-    // Format response data
-    console.log("Formatting booked artists data:", { bookingCount: bookings.length });
-    const bookedArtists = bookings.map((booking) => {
-      const artistData = {
-        artistId: booking.artistId._id,
-        fullName: booking.artistId.fullName,
-        mobileNumber: booking.artistId.mobileNumber,
-        email: booking.artistId.artistId.email,
-        artistType: booking.artistId.artistId.artistType,
-        instrument: booking.artistId.artistId.instrument,
-        profileImageUrl: booking.artistId.artistId.profileImageUrl,
-        bookingDateTime: booking.date_time,
-        paymentStatus: booking.payment_status,
-      };
-      console.log("Formatted artist:", {
-        artistId: artistData.artistId.toString(),
-        fullName: artistData.fullName,
-        paymentStatus: artistData.paymentStatus,
-      });
-      return artistData;
+    const artistAuthIds = bookings.map((b) => b.artistId).filter(Boolean);
+    console.log("🧾 [getBookedArtists] Artist auth IDs from bookings", artistAuthIds);
+
+    // Step 3: Get artist profiles based on artistAuthIds
+    const artistProfiles = await ArtistProfile.find({
+      artistId: { $in: artistAuthIds },
+    }).populate("artistId");
+
+    console.log("🧑‍🎤 [getBookedArtists] Artist profiles fetched", {
+      count: artistProfiles.length,
+      artistIds: artistProfiles.map((a) => a.artistId?._id.toString()),
     });
 
-    console.log("Returning booked artists response:", {
-      eventId,
-      artistCount: bookedArtists.length,
+    // Step 4: Merge bookings with artistProfiles
+    const result = bookings.map((booking) => {
+      const profile = artistProfiles.find((profile) =>
+        profile.artistId && profile.artistId._id.toString() === booking.artistId?.toString()
+      );
+
+      return {
+        booking: {
+          bookingId: booking._id,
+          eventId: booking.eventId,
+          artistId: booking.artistId,
+          hostId: booking.hostId,
+          date_time: booking.date_time,
+          invoices: booking.invoices,
+          payment_status: booking.payment_status,
+          razorpay_order_id: booking.razorpay_order_id,
+          razorpay_payment_id: booking.razorpay_payment_id,
+          createdAt: booking.createdAt,
+          updatedAt: booking.updatedAt,
+        },
+        artistProfile: profile || null,
+      };
     });
-    return apiResponse(res, {
+
+    // Step 5: Log all data for debugging
+    console.log("📋 [getBookedArtists] Full result data for debugging", {
+      eventId,
+      artistCount: result.length,
+      data: result.map((item, index) => ({
+        bookingIndex: index,
+        booking: {
+          bookingId: item.booking.bookingId?.toString(),
+          eventId: item.booking.eventId?.toString(),
+          artistId: item.booking.artistId?.toString(),
+          hostId: item.booking.hostId?.toString(),
+          date_time: item.booking.date_time?.toISOString(),
+          invoices: item.booking.invoices,
+          payment_status: item.booking.payment_status,
+          razorpay_order_id: item.booking.razorpay_order_id,
+          razorpay_payment_id: item.booking.razorpay_payment_id,
+          createdAt: item.booking.createdAt?.toISOString(),
+          updatedAt: item.booking.updatedAt?.toISOString(),
+        },
+        artistProfile: item.artistProfile
+          ? {
+              _id: item.artistProfile._id?.toString(),
+              artistId: item.artistProfile.artistId
+                ? {
+                    _id: item.artistProfile.artistId._id?.toString(),
+                    fullName: item.artistProfile.artistId.fullName,
+                    mobileNumber: item.artistProfile.artistId.mobileNumber,
+                    role: item.artistProfile.artistId.role,
+                    isRememberMe: item.artistProfile.artistId.isRememberMe,
+                    isMobileVerified: item.artistProfile.artistId.isMobileVerified,
+                    isVerified: item.artistProfile.artistId.isVerified,
+                    isProfileComplete: item.artistProfile.artistId.isProfileComplete,
+                    firebaseUid: item.artistProfile.artistId.firebaseUid,
+                    createdAt: item.artistProfile.artistId.createdAt?.toISOString(),
+                    updatedAt: item.artistProfile.artistId.updatedAt?.toISOString(),
+                  }
+                : null,
+              profileImageUrl: item.artistProfile.profileImageUrl,
+              dob: item.artistProfile.dob?.toISOString(),
+              email: item.artistProfile.email,
+              isEmailVerified: item.artistProfile.isEmailVerified,
+              address: item.artistProfile.address,
+              artistType: item.artistProfile.artistType,
+              artistSubType: item.artistProfile.artistSubType,
+              instrument: item.artistProfile.instrument,
+              budget: item.artistProfile.budget,
+              isCrowdGuarantee: item.artistProfile.isCrowdGuarantee,
+              isNegotiaitonAvailable: item.artistProfile.isNegotiaitonAvailable,
+              performanceUrlId: item.artistProfile.performanceUrlId?.map((id) => id.toString()),
+              Rating: item.artistProfile.Rating,
+              allRating: item.artistProfile.allRating?.map((rating) => ({
+                hostId: rating.hostId?.toString(),
+                rating: rating.rating,
+              })),
+              status: item.artistProfile.status,
+              createdAt: item.artistProfile.createdAt?.toISOString(),
+              updatedAt: item.artistProfile.updatedAt?.toISOString(),
+            }
+          : null,
+      })),
+    });
+
+    console.log("📦 [getBookedArtists] Final merged result prepared", {
+      count: result.length,
+    });
+
+    return res.status(200).json({
       success: true,
       message: "Booked artists fetched successfully",
-      data: bookedArtists,
-      statusCode: 200,
+      eventId,
+      artistCount: result.length,
+      data: result,
     });
+
   } catch (error) {
-    console.error("Get booked artists error:", {
-      error: error.message,
+    console.error("❌ [getBookedArtists] Error occurred", {
+      message: error.message,
       stack: error.stack,
-      eventId: req.params.eventId,
-      hostId: req.user.hostId,
     });
-    return apiResponse(res, {
-      success: false,
-      message: "Failed to fetch booked artists",
-      data: { error: error.message },
-      statusCode: 500,
-    });
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
+
+
+
+
 exports.getAllEventsHost = async (req, res) => {
   console.log("Starting getAllEventsHost: Received request", {
     hostId: req.user.hostId,
