@@ -4,6 +4,7 @@ const Booking = require('../models/booking');
 const Event = require('../../Host/models/Events/event');
 const ArtistProfile =require('../../Artist/models/Profile/profile')
 const Artist = require("../../Artist/models/Auth/Auth")
+const NotificationService = require('../../Notification/controller/notificationService');
 // Initialize Razorpay instance
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -225,6 +226,51 @@ const verifyPayment = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    // Create notifications for both host and artist
+    try {
+      // Notification for artist
+      const artistNotificationData = {
+        recipientId: artistId,
+        recipientType: 'artist',
+        senderId: hostId,
+        senderType: 'host',
+        title: `Booking Confirmed!`,
+        body: `Your booking for "${event.eventName}" has been confirmed and payment received`,
+        type: 'booking_confirmed',
+        data: {
+          bookingId: booking[0]._id,
+          eventId: eventId,
+          amount: invoices.total
+        }
+      };
+
+      // Notification for host
+      const hostNotificationData = {
+        recipientId: hostId,
+        recipientType: 'host',
+        senderId: artistId,
+        senderType: 'artist',
+        title: `Payment Received!`,
+        body: `Payment of ₹${invoices.total} received for "${event.eventName}" booking`,
+        type: 'payment_received',
+        data: {
+          bookingId: booking[0]._id,
+          eventId: eventId,
+          amount: invoices.total
+        }
+      };
+
+      await Promise.all([
+        NotificationService.createAndSendNotification(artistNotificationData),
+        NotificationService.createAndSendNotification(hostNotificationData)
+      ]);
+
+      console.log(`[${new Date().toISOString()}] Notifications created for booking ${booking[0]._id}`);
+    } catch (notificationError) {
+      console.error(`[${new Date().toISOString()}] Error creating notifications:`, notificationError);
+      // Don't fail the request if notification fails
+    }
 
     res.status(201).json({
       success: true,

@@ -3,6 +3,7 @@ const ChatNegotiation = require('../Model/ChatNegotiation');
 const Event = require('../../Host/models/Events/event');
 const ArtistAuthentication = require('../../Artist/models/Auth/Auth');
 const HostAuthentication = require('../../Host/models/Auth/Auth');
+const NotificationService = require('../../Notification/controller/notificationService');
 
 // Get all events for the logged-in user (host or artist)
 const getEvents = async (req, res) => {
@@ -11,25 +12,40 @@ const getEvents = async (req, res) => {
     const userRole = req.user.role;
     console.log(`[${new Date().toISOString()}] Fetching events for user ${userId} with role ${userRole}`);
 
-    let events;
+    let events = [];
     if (userRole === 'host') {
-      // Hosts: Fetch events they created
       events = await Event.find({ hostId: userId })
         .select('eventName eventDateTime venue status posterUrl')
         .sort({ eventDateTime: -1 });
-      console.log(`[${new Date().toISOString()}] Found ${events.length} events for host ${userId}`);
+      // For each event, sum unread messages for the host across all chats for that event
+      for (const event of events) {
+        const chats = await ChatNegotiation.find({ eventId: event._id });
+        let eventUnreadCount = 0;
+        for (const chat of chats) {
+          eventUnreadCount += chat.messages.filter(
+            msg => !msg.readBy.map(id => id.toString()).includes(userId.toString())
+          ).length;
+        }
+        event._doc.unreadCount = eventUnreadCount;
+      }
     } else if (userRole === 'artist') {
-      // Artists: Fetch events they are involved in via ChatNegotiation
       const chats = await ChatNegotiation.find({ artistId: userId })
-        .select('eventId')
+        .select('eventId messages')
         .populate({
           path: 'eventId',
           select: 'eventName eventDateTime venue status posterUrl',
         });
       events = chats
-        .filter(chat => chat.eventId) // Filter out null eventIds (in case of deleted events)
-        .map(chat => chat.eventId);
-      console.log(`[${new Date().toISOString()}] Found ${events.length} events for artist ${userId}`);
+        .filter(chat => chat.eventId)
+        .map(chat => {
+          const unreadCount = chat.messages.filter(
+            msg => !msg.readBy.map(id => id.toString()).includes(userId.toString())
+          ).length;
+          return {
+            ...chat.eventId._doc,
+            unreadCount,
+          };
+        });
     } else {
       console.warn(`[${new Date().toISOString()}] Invalid user role ${userRole} for user ${userId}`);
       return res.status(403).json({ message: 'Invalid user role' });
@@ -67,7 +83,6 @@ const getChatsForEvent = async (req, res) => {
     }
 
     if (userRole === 'artist') {
-      // Artists: Fetch the single chat they are involved in for this event
       const chat = await ChatNegotiation.findOne({ eventId, artistId: userId })
         .populate({
           path: 'artistId',
@@ -82,7 +97,7 @@ const getChatsForEvent = async (req, res) => {
         .populate({
           path: 'messages.senderId',
           select: 'fullName profileImageUrl',
-          model: 'HostAuthentication', // For artists, senderId in messages is typically the host
+          model: 'HostAuthentication',
         })
         .select('artistId hostId messages lastMessageAt latestProposedPrice proposedBy isHostApproved isArtistApproved finalPrice isNegotiationComplete');
 
@@ -91,11 +106,17 @@ const getChatsForEvent = async (req, res) => {
         return res.status(404).json({ message: 'No chat found for this event' });
       }
 
+      // Add unreadCount for artist
+      const unreadCount = chat.messages.filter(
+        msg => !msg.readBy.map(id => id.toString()).includes(userId.toString())
+      ).length;
+      const chatObj = chat.toObject();
+      chatObj.unreadCount = unreadCount;
+
       console.log(`[${new Date().toISOString()}] Returning chat ${chat._id} for artist ${userId} in event ${eventId}`);
-      return res.status(200).json(chat); // Return single chat object for artists
+      return res.status(200).json(chatObj);
     }
 
-    // Hosts: Fetch all chats for the event
     const chats = await ChatNegotiation.find({ eventId })
       .populate({
         path: 'artistId',
@@ -107,11 +128,21 @@ const getChatsForEvent = async (req, res) => {
         select: 'fullName profileImageUrl',
         model: 'HostAuthentication',
       })
-      .select('artistId hostId lastMessageAt latestProposedPrice proposedBy isHostApproved isArtistApproved finalPrice isNegotiationComplete')
+      .select('artistId hostId messages lastMessageAt latestProposedPrice proposedBy isHostApproved isArtistApproved finalPrice isNegotiationComplete')
       .sort({ lastMessageAt: -1 });
 
+    // Add unreadCount for each chat (host)
+    const chatsWithUnread = chats.map(chat => {
+      const unreadCount = chat.messages.filter(
+        msg => !msg.readBy.map(id => id.toString()).includes(userId.toString())
+      ).length;
+      const chatObj = chat.toObject();
+      chatObj.unreadCount = unreadCount;
+      return chatObj;
+    });
+
     console.log(`[${new Date().toISOString()}] Found ${chats.length} chats for event ${eventId} for host ${userId}`);
-    res.status(200).json(chats); // Return array of chats for hosts
+    res.status(200).json(chatsWithUnread);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error fetching chats for event ${req.params.eventId}: ${error.message}`);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -176,6 +207,7 @@ const sendMessage = async (req, res) => {
     const { proposedPrice } = req.body;
     const userId = req.user.hostId || req.user.artistId;
     const userRole = req.user.role;
+    const io = req.app.get("io"); // Access Socket.IO instance
     console.log(`[${new Date().toISOString()}] Sending price proposal $${proposedPrice} in chat ${chatId} by user ${userId} (${userRole})`);
 
     if (!mongoose.Types.ObjectId.isValid(chatId)) {
@@ -241,6 +273,39 @@ const sendMessage = async (req, res) => {
         model: userRole === 'host' ? 'ArtistAuthentication' : 'HostAuthentication',
       });
 
+    // Emit Socket.IO event to both host and artist
+    io.to(chat.hostId.toString()).emit("newMessage", updatedChat);
+    io.to(chat.artistId.toString()).emit("newMessage", updatedChat);
+    console.log(`[${new Date().toISOString()}] Emitted newMessage event for chat ${chatId}`);
+
+    // Create notification for the recipient
+    try {
+      const recipientId = userRole === 'host' ? chat.artistId : chat.hostId;
+      const recipientType = userRole === 'host' ? 'artist' : 'host';
+      const senderName = userRole === 'host' ? 'Host' : 'Artist';
+      
+      const notificationData = {
+        recipientId,
+        recipientType,
+        senderId: userId,
+        senderType: userRole,
+        title: `New Price Proposal`,
+        body: `${senderName} proposed ₹${proposedPrice} for your event`,
+        type: 'price_proposal',
+        data: {
+          chatId: chat._id,
+          eventId: chat.eventId,
+          amount: proposedPrice
+        }
+      };
+
+      await NotificationService.createAndSendNotification(notificationData);
+      console.log(`[${new Date().toISOString()}] Notification created for ${recipientType} ${recipientId}`);
+    } catch (notificationError) {
+      console.error(`[${new Date().toISOString()}] Error creating notification:`, notificationError);
+      // Don't fail the request if notification fails
+    }
+
     res.status(201).json(updatedChat);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error sending price proposal in chat ${req.params.chatId}: ${error.message}`);
@@ -254,6 +319,7 @@ const startChat = async (req, res) => {
     const { eventId, artistId } = req.body;
     const hostId = req.user.hostId;
     const userRole = req.user.role;
+    const io = req.app.get("io"); // Access Socket.IO instance
     console.log(`[${new Date().toISOString()}] Starting new chat for event ${eventId} with artist ${artistId} by host ${hostId}`);
 
     if (userRole !== 'host') {
@@ -311,6 +377,36 @@ const startChat = async (req, res) => {
         model: 'HostAuthentication',
       });
 
+    // Emit Socket.IO event to notify artist of new chat
+    io.to(artistId.toString()).emit("newChat", populatedChat);
+    console.log(`[${new Date().toISOString()}] Emitted newChat event to artist ${artistId}`);
+
+    // Create notification for the artist
+    try {
+      const event = await Event.findById(eventId).select('eventName');
+      const host = await HostAuthentication.findById(hostId).select('fullName');
+      
+      const notificationData = {
+        recipientId: artistId,
+        recipientType: 'artist',
+        senderId: hostId,
+        senderType: 'host',
+        title: `New Chat Invitation`,
+        body: `${host.fullName} wants to discuss "${event.eventName}" with you`,
+        type: 'event_invitation',
+        data: {
+          chatId: newChat._id,
+          eventId: eventId
+        }
+      };
+
+      await NotificationService.createAndSendNotification(notificationData);
+      console.log(`[${new Date().toISOString()}] Notification created for artist ${artistId}`);
+    } catch (notificationError) {
+      console.error(`[${new Date().toISOString()}] Error creating notification:`, notificationError);
+      // Don't fail the request if notification fails
+    }
+
     res.status(201).json(populatedChat);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error starting chat for event ${req.body.eventId}: ${error.message}`);
@@ -324,6 +420,7 @@ const approvePrice = async (req, res) => {
     const { chatId } = req.params;
     const userId = req.user.hostId || req.user.artistId;
     const userRole = req.user.role;
+    const io = req.app.get("io"); // Access Socket.IO instance
     console.log(`[${new Date().toISOString()}] Approving price for chat ${chatId} by user ${userId} (${userRole})`);
 
     if (!mongoose.Types.ObjectId.isValid(chatId)) {
@@ -344,7 +441,6 @@ const approvePrice = async (req, res) => {
       console.warn(`[${new Date().toISOString()}] Unauthorized price approval attempt in chat ${chatId} by user ${userId}`);
       return res.status(403).json({ message: 'Unauthorized access to chat' });
     }
-    
 
     if (chat.isNegotiationComplete) {
       console.warn(`[${new Date().toISOString()}] Attempt to approve price in completed negotiation chat ${chatId}`);
@@ -394,10 +490,86 @@ const approvePrice = async (req, res) => {
         model: userRole === 'host' ? 'ArtistAuthentication' : 'HostAuthentication',
       });
 
+    // Emit Socket.IO event to both host and artist
+    io.to(chat.hostId.toString()).emit("priceApproved", updatedChat);
+    io.to(chat.artistId.toString()).emit("priceApproved", updatedChat);
+    console.log(`[${new Date().toISOString()}] Emitted priceApproved event for chat ${chatId}`);
+
+    // Create notification for the recipient
+    try {
+      const recipientId = userRole === 'host' ? chat.artistId : chat.hostId;
+      const recipientType = userRole === 'host' ? 'artist' : 'host';
+      const senderName = userRole === 'host' ? 'Host' : 'Artist';
+      
+      let notificationTitle, notificationBody, notificationType;
+      
+      if (chat.isNegotiationComplete) {
+        notificationTitle = `Price Agreement Reached!`;
+        notificationBody = `${senderName} agreed to ₹${chat.finalPrice} for your event`;
+        notificationType = 'price_approved';
+      } else {
+        notificationTitle = `Price Proposal Approved`;
+        notificationBody = `${senderName} approved your ₹${chat.latestProposedPrice} proposal`;
+        notificationType = 'price_approved';
+      }
+      
+      const notificationData = {
+        recipientId,
+        recipientType,
+        senderId: userId,
+        senderType: userRole,
+        title: notificationTitle,
+        body: notificationBody,
+        type: notificationType,
+        data: {
+          chatId: chat._id,
+          eventId: chat.eventId,
+          amount: chat.isNegotiationComplete ? chat.finalPrice : chat.latestProposedPrice,
+          isComplete: chat.isNegotiationComplete
+        }
+      };
+
+      await NotificationService.createAndSendNotification(notificationData);
+      console.log(`[${new Date().toISOString()}] Notification created for ${recipientType} ${recipientId}`);
+    } catch (notificationError) {
+      console.error(`[${new Date().toISOString()}] Error creating notification:`, notificationError);
+      // Don't fail the request if notification fails
+    }
+
     res.status(200).json(updatedChat);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error approving price for chat ${req.params.chatId}: ${error.message}`);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Mark all messages as read for a user in a chat
+const markChatAsRead = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.hostId || req.user.artistId;
+    const userRole = req.user.role;
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+      return res.status(400).json({ message: 'Invalid chat ID' });
+    }
+    const chat = await ChatNegotiation.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ message: 'Chat not found' });
+    }
+    // Mark all messages as read for this user
+    let updated = false;
+    for (const msg of chat.messages) {
+      if (!msg.readBy.map(id => id.toString()).includes(userId.toString())) {
+        msg.readBy.push(userId);
+        updated = true;
+      }
+    }
+    if (updated) {
+      await chat.save();
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -408,4 +580,5 @@ module.exports = {
   sendMessage,
   startChat,
   approvePrice,
+  markChatAsRead,
 };

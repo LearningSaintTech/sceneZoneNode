@@ -24,6 +24,11 @@ const messageSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  readBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User', // Can be host or artist
+    default: [],
+  }],
 });
 
 const chatNegotiationSchema = new mongoose.Schema({

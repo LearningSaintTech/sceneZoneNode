@@ -9,7 +9,7 @@ const {
 require("dotenv").config();
 const { s3 } = require("../config/s3");
 
-const MULTIPART_THRESHOLD = 5 * 1024 * 1024; // 5MB
+const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 5MB
 
 // Internal helper for multipart upload
 const multipartUpload = async (file, fileName) => {

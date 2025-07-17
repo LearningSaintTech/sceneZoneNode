@@ -1,5 +1,6 @@
 const Event = require('../../Host/models/Events/event');
 const mongoose = require('mongoose');
+const NotificationService = require('../../Notification/controller/notificationService');
 
 exports.enableGuestList = async (req, res) => {
   console.log('enableGuestList called with eventId:', req.params.eventId, 'by user:', req.user.hostId);
@@ -55,7 +56,9 @@ exports.getGuestListLink = async (req, res) => {
 exports.applyForGuestList = async (req, res) => {
   console.log('applyForGuestList called by user:', req.user.userId, 'for eventId:', req.params.eventId);
   try {
-    const event = await Event.findOne({ _id: req.params.eventId, eventGuestEnabled: true });
+    const event = await Event.findOne({ _id: req.params.eventId, eventGuestEnabled: true })
+      .populate('assignedArtists', 'fullName mobileNumber')
+      .populate('hostId', 'fullName mobileNumber');
     if (!event) {
       console.log('Event not found or guest list not enabled');
       return res.status(404).json({ message: 'Event not found or guest list not enabled' });
@@ -71,6 +74,98 @@ exports.applyForGuestList = async (req, res) => {
     console.log("eventtttt",event)
     await event.save();
     console.log('User added to guest list');
+    console.log('🔔 [DEBUG] NotificationService available:', !!NotificationService);
+    console.log('🔔 [DEBUG] NotificationService.createAndSendNotification available:', !!NotificationService.createAndSendNotification);
+
+    // Enhanced notification logic with better debugging
+    console.log('🔔 [DEBUG] Event details for notifications:', {
+      eventId: event._id,
+      eventName: event.eventName,
+      assignedArtistsCount: event.assignedArtists?.length || 0,
+      hostId: event.hostId?._id,
+      hostName: event.hostId?.fullName
+    });
+
+    // Send notifications to all assigned artists
+    if (event.assignedArtists && event.assignedArtists.length > 0) {
+      console.log(`🔔 [DEBUG] Sending notifications to ${event.assignedArtists.length} assigned artists`);
+      let artistNotificationCount = 0;
+      
+      for (const artist of event.assignedArtists) {
+        try {
+          console.log(`🔔 [DEBUG] Attempting to send notification to artist ${artist._id} (${artist.fullName})`);
+          
+          const notificationData = {
+            recipientId: artist._id,
+            recipientType: 'artist',
+            senderId: req.user.userId,
+            senderType: 'user',
+            title: 'New Guest List Request',
+            body: `A user has applied for guest list access to your event "${event.eventName}"`,
+            type: 'guest_list_request',
+            data: {
+              eventId: event._id,
+              userId: req.user.userId,
+              eventName: event.eventName,
+              hostName: event.hostId?.fullName || 'Host'
+            }
+          };
+
+          console.log(`🔔 [DEBUG] Notification data for artist ${artist._id}:`, notificationData);
+          
+          await NotificationService.createAndSendNotification(notificationData);
+          artistNotificationCount++;
+          console.log(`🔔 [SUCCESS] Notification sent to artist ${artist._id} (${artist.fullName}) for guest list request`);
+        } catch (notificationError) {
+          console.error(`🔔 [ERROR] Failed to send notification to artist ${artist._id} (${artist.fullName}):`, notificationError);
+          console.error(`🔔 [ERROR] Error details:`, {
+            message: notificationError.message,
+            stack: notificationError.stack
+          });
+        }
+      }
+      
+      console.log(`🔔 [SUMMARY] Successfully sent notifications to ${artistNotificationCount}/${event.assignedArtists.length} artists`);
+    } else {
+      console.log('🔔 [DEBUG] No assigned artists found, sending notification to host instead');
+      console.log('🔔 [DEBUG] Host details:', {
+        hostId: event.hostId?._id,
+        hostName: event.hostId?.fullName
+      });
+      
+      // Send notification to host if no artists are assigned
+      try {
+        console.log(`🔔 [DEBUG] Attempting to send notification to host ${event.hostId._id} (${event.hostId.fullName})`);
+        
+        const notificationData = {
+          recipientId: event.hostId._id,
+          recipientType: 'host',
+          senderId: req.user.userId,
+          senderType: 'user',
+          title: 'New Guest List Request',
+          body: `A user has applied for guest list access to your event "${event.eventName}"`,
+          type: 'guest_list_request',
+          data: {
+            eventId: event._id,
+            userId: req.user.userId,
+            eventName: event.eventName,
+            hostName: event.hostId?.fullName || 'Host'
+          }
+        };
+
+        console.log(`🔔 [DEBUG] Notification data for host ${event.hostId._id}:`, notificationData);
+        
+        await NotificationService.createAndSendNotification(notificationData);
+        console.log(`🔔 [SUCCESS] Notification sent to host ${event.hostId._id} (${event.hostId.fullName}) for guest list request`);
+      } catch (notificationError) {
+        console.error(`🔔 [ERROR] Failed to send notification to host ${event.hostId._id} (${event.hostId.fullName}):`, notificationError);
+        console.error(`🔔 [ERROR] Error details:`, {
+          message: notificationError.message,
+          stack: notificationError.stack
+        });
+      }
+    }
+
     res.json({ message: 'Applied for guest list successfully' });
   } catch (error) {
     console.error('Error in applyForGuestList:', error);
@@ -105,7 +200,7 @@ exports.approveGuestListRequest = async (req, res) => {
       _id: req.params.eventId,
       assignedArtists: req.user.artistId,
       eventGuestEnabled: true,
-    });
+    }).populate('assignedArtists', 'fullName');
 
     if (!event) {
       console.log('Event not found or artist not authorized');
@@ -126,6 +221,29 @@ exports.approveGuestListRequest = async (req, res) => {
     guest.discountLevel = discountLevel;
     await event.save();
     console.log(`User ${userId} approved with discount level ${discountLevel}`);
+
+    // Send notification to user about approval
+    try {
+      await NotificationService.createAndSendNotification({
+        recipientId: userId,
+        recipientType: 'user',
+        senderId: req.user.artistId,
+        senderType: 'artist',
+        title: 'Guest List Request Approved!',
+        body: `Your guest list request for "${event.eventName}" has been approved with ${discountLevel} discount!`,
+        type: 'guest_list_approved',
+        data: {
+          eventId: event._id,
+          eventName: event.eventName,
+          discountLevel: discountLevel,
+          artistId: req.user.artistId
+        }
+      });
+      console.log(`Notification sent to user ${userId} for guest list approval`);
+    } catch (notificationError) {
+      console.error(`Failed to send approval notification to user ${userId}:`, notificationError);
+    }
+
     res.json({ message: `User approved with ${discountLevel} discount` });
   } catch (error) {
     console.error('Error in approveGuestListRequest:', error);
@@ -152,9 +270,10 @@ exports.getUserDiscountLevel = async (req, res) => {
     });
 
     if (!event) {
-      console.log('Event not found, guest list not enabled, or event is cancelled/completed');
-      return res.status(404).json({
-        message: 'Event not found, guest list not enabled, or event is cancelled/completed',
+      console.log('getDiscountData: Event not found');
+      return res.status(200).json({
+        success: true,
+        message: 'No guest list is enabled',
       });
     }
 
@@ -208,11 +327,11 @@ exports.getUserDiscountLevel = async (req, res) => {
 // 6. Artist rejects guest list request
 exports.rejectGuestListRequest = async (req, res) => {
   const { userId } = req.body;
-  console.log('rejectGuestListRequest called by:', req.user.id, 'for user:', userId, 'event:', req.params.eventId);
+  console.log('rejectGuestListRequest called by:', req.user.artistId, 'for user:', userId, 'event:', req.params.eventId);
   try {
     const event = await Event.findOne({
       _id: req.params.eventId,
-      assignedArtists: req.user.id,
+      assignedArtists: req.user.artistId,
       eventGuestEnabled: true,
     });
 
@@ -230,6 +349,28 @@ exports.rejectGuestListRequest = async (req, res) => {
     event.guestList.splice(guestIndex, 1);
     await event.save();
     console.log('User guest list request rejected successfully');
+
+    // Send notification to user about rejection
+    try {
+      await NotificationService.createAndSendNotification({
+        recipientId: userId,
+        recipientType: 'user',
+        senderId: req.user.artistId,
+        senderType: 'artist',
+        title: 'Guest List Request Update',
+        body: `Your guest list request for "${event.eventName}" was not approved at this time.`,
+        type: 'guest_list_rejected',
+        data: {
+          eventId: event._id,
+          eventName: event.eventName,
+          artistId: req.user.artistId
+        }
+      });
+      console.log(`Notification sent to user ${userId} for guest list rejection`);
+    } catch (notificationError) {
+      console.error(`Failed to send rejection notification to user ${userId}:`, notificationError);
+    }
+
     res.json({ message: 'User guest list request rejected successfully' });
   } catch (error) {
     console.error('Error in rejectGuestListRequest:', error);

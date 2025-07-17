@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
 require("dotenv").config();
 const connectDB = require("./config/db");
 
@@ -54,13 +56,23 @@ const invoiceRoutes = require("./artistHostBooking/routes/invoiceRoutes");
 const bookingRoutes = require("./artistHostBooking/routes/bookingRoutes");
 const chatNegotiationRoutes = require("./artistHostChat/Routes/chatNegotiationRoutes");
 const guestListRoutes = require("./guestList/routes/guestListRoutes");
+const notificationRoutes = require("./Notification/routes/notificationRoutes");
 
 // Event Host Routes
 const eventHostInvoiceRoutes = require("./eventHostBooking/routes/adminRoutes");
- const eventHostTicketBookingRoutes = require("./eventHostBooking/routes/ticketBookingRoutes");
+const eventHostTicketBookingRoutes = require("./eventHostBooking/routes/ticketBookingRoutes");
 
 const app = express();
-const PORT = process.env.PORT;
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: ["http://localhost:3000", "http://localhost:8081"], // Adjust for React Native app URLs
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+const PORT = process.env.PORT || 5000;
 
 // Database Connection
 connectDB();
@@ -69,6 +81,25 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Socket.IO Connection Handling
+io.on("connection", (socket) => {
+  console.log(`[${new Date().toISOString()}] User connected: ${socket.id}`);
+
+  // Join a room based on user ID
+  socket.on("join", (userId) => {
+    socket.join(userId);
+    console.log(`[${new Date().toISOString()}] User ${userId} joined room`);
+  });
+
+  // Handle disconnection
+  socket.on("disconnect", () => {
+    console.log(`[${new Date().toISOString()}] User disconnected: ${socket.id}`);
+  });
+});
+
+// Make io accessible in routes
+app.set("io", io);
 
 // Root Route
 app.get("/", (req, res) => {
@@ -135,9 +166,12 @@ app.use("/api/guest-list", guestListRoutes);
 
 // Event Host Routes
 app.use("/api/eventhost/invoices", eventHostInvoiceRoutes);
- app.use("/api/eventhost/tickets", eventHostTicketBookingRoutes);
+app.use("/api/eventhost/tickets", eventHostTicketBookingRoutes);
+
+// Notification Routes (for all user types)
+app.use("/api/notifications", notificationRoutes);
 
 // Start Server
-app.listen(PORT, "0.0.0.0", () =>
+server.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on http://localhost:${PORT}`)
 );

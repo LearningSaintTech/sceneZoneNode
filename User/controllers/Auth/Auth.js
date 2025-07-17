@@ -288,10 +288,13 @@ exports.login = async (req, res) => {
 
 exports.loginWithPassword = async (req, res) => {
   const { mobileNumber, password } = req.body;
+console.log("mobileNumber",mobileNumber)
+console.log("password",password)
 
   try {
     // Find user by mobile number
-    const user = await User.findOne({ mobileNumber });
+    const user = await User.findOne({ mobileNumber: mobileNumber});
+    console.log("user",user)
     if (!user) {
       return apiResponse(res, {
         success: false,

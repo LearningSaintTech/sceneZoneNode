@@ -156,7 +156,8 @@ exports.verifyFirebaseOtp = async (req, res) => {
     // }
 
     console.log('Finding user with mobileNumber:', decodedToken.phone_number);
-    const formattedMobileNumber = '+91' + mobileNumber.trim(); // Ensure +91 prefix
+    const formattedMobileNumber =   mobileNumber; // Ensure +91 prefix
+    console.log("formattedMobileNumber",formattedMobileNumber)
     const userAuth = await UserAuth.findOne({ mobileNumber: formattedMobileNumber });
     if (!userAuth) {
       console.log('verifyFirebaseOtp failed: User not found', { mobileNumber: formattedMobileNumber });
@@ -242,6 +243,7 @@ exports.firebaseLogin = async (req, res) => {
     // Check if user exists
     console.log('Checking for user with mobileNumber:', mobileNumber);
     const userAuth = await UserAuth.findOne({ mobileNumber });
+    console.log("userAuth",userAuth)
     if (!userAuth) {
       console.log('firebaseLogin failed: User not found', { mobileNumber });
       return apiResponse(res, {

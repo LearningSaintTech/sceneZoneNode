@@ -16,4 +16,6 @@ router.post('/send-message/:chatId', authMiddleware(['host', 'artist']), chatNeg
 
 router.patch('/approve-price/:chatId', authMiddleware(['host', 'artist']), chatNegotiationController.approvePrice);
 
+router.post('/mark-as-read/:chatId', authMiddleware(['host', 'artist']), chatNegotiationController.markChatAsRead);
+
 module.exports = router;

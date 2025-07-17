@@ -1,4 +1,6 @@
 const Event = require("../../models/Events/event");
+const Booking = require("../../../artistHostBooking/models/booking");
+
 const EventInvitation = require("../../models/InviteArtist/inviteArtist");
 const EventApplication = require("../../../Artist/models/EventApplication/eventApplication");
 const { uploadImage, deleteImage, deleteFromS3 } = require("../../../utils/s3Functions");
@@ -1193,6 +1195,378 @@ exports.getAllEventsForUsers = async (req, res) => {
       stack: error.stack,
       userId: req.user?.userId,
       query: req.query,
+    });
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to fetch events",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};
+
+// Cancel Event
+exports.cancelEvent = async (req, res) => {
+  console.log("Starting cancelEvent: Received request", {
+    hostId: req.user.hostId,
+    eventId: req.params.eventId,
+    timestamp: new Date().toISOString(),
+  });
+
+  try {
+    const hostId = req.user.hostId;
+    const eventId = req.params.eventId;
+
+    // Validate eventId
+    console.log("Validating eventId:", { eventId });
+    if (!mongoose.isValidObjectId(eventId)) {
+      console.warn("Invalid eventId provided:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid event ID.",
+        statusCode: 400,
+      });
+    }
+
+    // Check if event exists and belongs to host
+    console.log("Fetching event:", { eventId, hostId });
+    const event = await Event.findOne({ _id: eventId, hostId });
+    if (!event) {
+      console.warn("Event not found or unauthorized:", { eventId, hostId });
+      return apiResponse(res, {
+        success: false,
+        message: "Event not found or you don't have permission to cancel it.",
+        statusCode: 404,
+      });
+    }
+    console.log("Event found:", {
+      eventId,
+      eventName: event.eventName,
+      isCancelled: event.isCancelled,
+    });
+
+    // Check if event is already cancelled
+    if (event.isCancelled) {
+      console.warn("Event already cancelled:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Event is already cancelled.",
+        statusCode: 400,
+      });
+    }
+
+    // Update event to mark as cancelled
+    console.log("Updating event to cancelled:", { eventId });
+    event.isCancelled = true;
+    event.status = "rejected";
+    await event.save();
+    console.log("Event cancelled successfully:", {
+      eventId,
+      isCancelled: event.isCancelled,
+      status: event.status,
+    });
+
+    return apiResponse(res, {
+      success: true,
+      message: "Event cancelled successfully",
+      data: event,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Cancel event error:", {
+      error: error.message,
+      stack: error.stack,
+      eventId: req.params.eventId,
+      hostId: req.user.hostId,
+    });
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to cancel event",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};
+
+// Mark Event as Completed
+exports.markEventCompleted = async (req, res) => {
+  console.log("Starting markEventCompleted: Received request", {
+    hostId: req.user.hostId,
+    eventId: req.params.eventId,
+    timestamp: new Date().toISOString(),
+  });
+
+  try {
+    const hostId = req.user.hostId;
+    const eventId = req.params.eventId;
+
+    // Validate eventId
+    console.log("Validating eventId:", { eventId });
+    if (!mongoose.isValidObjectId(eventId)) {
+      console.warn("Invalid eventId provided:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid event ID.",
+        statusCode: 400,
+      });
+    }
+
+    // Check if event exists and belongs to host
+    console.log("Fetching event:", { eventId, hostId });
+    const event = await Event.findOne({ _id: eventId, hostId });
+    if (!event) {
+      console.warn("Event not found or unauthorized:", { eventId, hostId });
+      return apiResponse(res, {
+        success: false,
+        message: "Event not found or you don't have permission to mark it as completed.",
+        statusCode: 404,
+      });
+    }
+    console.log("Event found:", {
+      eventId,
+      eventName: event.eventName,
+      isCompleted: event.isCompleted,
+      isCancelled: event.isCancelled,
+    });
+
+    // Check if event is already completed
+    if (event.isCompleted) {
+      console.warn("Event already completed:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Event is already marked as completed.",
+        statusCode: 400,
+      });
+    }
+
+    // Check if event is cancelled
+    if (event.isCancelled) {
+      console.warn("Event is cancelled:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Cannot mark a cancelled event as completed.",
+        statusCode: 400,
+      });
+    }
+
+    // Update event to mark as completed
+    console.log("Updating event to completed:", { eventId });
+    event.isCompleted = true;
+    event.status = "approved";
+    await event.save();
+    console.log("Event marked as completed successfully:", {
+      eventId,
+      isCompleted: event.isCompleted,
+      status: event.status,
+    });
+
+    return apiResponse(res, {
+      success: true,
+      message: "Event marked as completed successfully",
+      data: event,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Mark event completed error:", {
+      error: error.message,
+      stack: error.stack,
+      eventId: req.params.eventId,
+      hostId: req.user.hostId,
+    });
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to mark event as completed",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};
+
+// Get All Booked Artists for an Event
+exports.getBookedArtists = async (req, res) => {
+  console.log("Starting getBookedArtists: Received request", {
+    hostId: req.user.hostId,
+    eventId: req.params.eventId,
+    timestamp: new Date().toISOString(),
+  });
+
+  try {
+    const hostId = req.user.hostId;
+    const eventId = req.params.eventId;
+
+    // Validate eventId
+    console.log("Validating eventId:", { eventId });
+    if (!mongoose.isValidObjectId(eventId)) {
+      console.warn("Invalid eventId provided:", { eventId });
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid event ID.",
+        statusCode: 400,
+      });
+    }
+
+    // Check if event exists and belongs to host
+    console.log("Fetching event:", { eventId, hostId });
+    const event = await Event.findOne({ _id: eventId, hostId });
+    if (!event) {
+      console.warn("Event not found or unauthorized:", { eventId, hostId });
+      return apiResponse(res, {
+        success: false,
+        message: "Event not found or you don't have permission to view its bookings.",
+        statusCode: 404,
+      });
+    }
+    console.log("Event found:", {
+      eventId,
+      eventName: event.eventName,
+    });
+
+    // Find bookings for the event
+    console.log("Fetching bookings for event:", { eventId });
+    const bookings = await Booking.find({ eventId })
+      .populate({
+        path: "artistId",
+        select: "fullName mobileNumber",
+        populate: {
+          path: "artistId",
+          select: "profileImageUrl email artistType instrument",
+          model: "ArtistProfile",
+        },
+      })
+      .select("artistId date_time payment_status");
+    console.log("Bookings fetched:", {
+      eventId,
+      bookingCount: bookings.length,
+      bookingIds: bookings.map((b) => b._id.toString()),
+    });
+
+    if (!bookings.length) {
+      console.log("No bookings found for event:", { eventId });
+      return apiResponse(res, {
+        success: true,
+        message: "No booked artists found for this event.",
+        data: [],
+        statusCode: 200,
+      });
+    }
+
+    // Format response data
+    console.log("Formatting booked artists data:", { bookingCount: bookings.length });
+    const bookedArtists = bookings.map((booking) => {
+      const artistData = {
+        artistId: booking.artistId._id,
+        fullName: booking.artistId.fullName,
+        mobileNumber: booking.artistId.mobileNumber,
+        email: booking.artistId.artistId.email,
+        artistType: booking.artistId.artistId.artistType,
+        instrument: booking.artistId.artistId.instrument,
+        profileImageUrl: booking.artistId.artistId.profileImageUrl,
+        bookingDateTime: booking.date_time,
+        paymentStatus: booking.payment_status,
+      };
+      console.log("Formatted artist:", {
+        artistId: artistData.artistId.toString(),
+        fullName: artistData.fullName,
+        paymentStatus: artistData.paymentStatus,
+      });
+      return artistData;
+    });
+
+    console.log("Returning booked artists response:", {
+      eventId,
+      artistCount: bookedArtists.length,
+    });
+    return apiResponse(res, {
+      success: true,
+      message: "Booked artists fetched successfully",
+      data: bookedArtists,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Get booked artists error:", {
+      error: error.message,
+      stack: error.stack,
+      eventId: req.params.eventId,
+      hostId: req.user.hostId,
+    });
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to fetch booked artists",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};
+exports.getAllEventsHost = async (req, res) => {
+  console.log("Starting getAllEventsHost: Received request", {
+    hostId: req.user.hostId,
+    timestamp: new Date().toISOString(),
+  });
+
+  try {
+    const hostId = req.user.hostId;
+
+    // Validate hostId
+    console.log("Validating hostId", { hostId });
+    if (!mongoose.isValidObjectId(hostId)) {
+      console.warn("Invalid hostId provided", { hostId });
+      return apiResponse(res, {
+        success: false,
+        message: "Invalid host ID.",
+        statusCode: 400,
+      });
+    }
+
+    // Fetch events for the host
+    console.log("Fetching events for host", { hostId });
+    const events = await Event.find({ hostId })
+      .populate({
+        path: "assignedArtists",
+        select: "name",
+      })
+      .sort({ createdAt: -1 });
+    console.log("Events fetched", {
+      hostId,
+      eventCount: events.length,
+      eventIds: events.map((e) => e._id.toString()),
+    });
+
+    // Update showStatus for each event
+    console.log("Updating showStatus for events");
+    const today = new Date();
+    for (const event of events) {
+      if (Array.isArray(event.eventDateTime)) {
+        const showStatusArray = event.eventDateTime
+          .map((dt) => {
+            const parsedDate = new Date(dt);
+            if (!isNaN(parsedDate)) {
+              const status = parsedDate < today ? "recent" : "upcoming";
+              return { date: parsedDate.toISOString().split("T")[0], status };
+            }
+            return null;
+          })
+          .filter(Boolean);
+
+        if (showStatusArray.length > 0) {
+          console.log("Updating showStatus for event", { eventId: event._id, showStatusArray });
+          event.showStatus = showStatusArray;
+          await event.save();
+        }
+      }
+    }
+
+    console.log("Returning getAllEventsHost response", { hostId, eventCount: events.length });
+    return apiResponse(res, {
+      success: true,
+      message: "Events fetched successfully",
+      data: events,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Get all events by hostId error:", {
+      error: error.message,
+      stack: error.stack,
+      hostId: req.user.hostId,
     });
     return apiResponse(res, {
       success: false,

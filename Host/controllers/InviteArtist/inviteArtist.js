@@ -2,6 +2,7 @@ const EventInvitation = require("../../models/InviteArtist/inviteArtist");
 const Shortlist = require("../../models/ShortlistArtist/shortlistArtist");
 const Event = require("../../models/Events/event");
 const { apiResponse } = require("../../../utils/apiResponse");
+const NotificationService = require("../../../Notification/controller/notificationService");
 
 exports.sendEventInvitation = async (req, res) => {
   try {
@@ -38,6 +39,32 @@ exports.sendEventInvitation = async (req, res) => {
 
     // Create a new invitation
     await EventInvitation.create({ artistId, eventId, hostId });
+
+    // Create notification for the artist
+    try {
+      const event = await Event.findById(eventId).select('eventName');
+      const host = await require("../../models/Auth/Auth").findById(hostId).select('fullName');
+      
+      const notificationData = {
+        recipientId: artistId,
+        recipientType: 'artist',
+        senderId: hostId,
+        senderType: 'host',
+        title: `Event Invitation`,
+        body: `${host.fullName} invited you to perform at "${event.eventName}"`,
+        type: 'event_invitation',
+        data: {
+          eventId: eventId
+        }
+      };
+
+      await NotificationService.createAndSendNotification(notificationData);
+      console.log(`[${new Date().toISOString()}] Notification created for artist ${artistId} for event invitation`);
+    } catch (notificationError) {
+      console.error(`[${new Date().toISOString()}] Error creating notification:`, notificationError);
+      // Don't fail the request if notification fails
+    }
+
     return apiResponse(res, {
       statusCode: 201,
       message: "Invitation sent to artist.",

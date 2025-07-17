@@ -7,7 +7,8 @@ const {
   applyForGuestList,
   approveGuestListRequest,
   getUserDiscountLevel,
-  getPendingGuestListRequests
+  getPendingGuestListRequests,
+  rejectGuestListRequest
 } = require('../controller/guestListController');
 
 // Host enables guest list
@@ -21,6 +22,9 @@ router.post('/apply/:eventId', authMiddleware(['user']), applyForGuestList);
 
 // Artist approves guest list request
 router.post('/events/:eventId/approve', authMiddleware(['artist']), approveGuestListRequest);
+
+// Artist rejects guest list request
+router.post('/events/:eventId/reject', authMiddleware(['artist']), rejectGuestListRequest);
 
 // User views discount level
 router.get('/events/:eventId/discount', authMiddleware(['user']), getUserDiscountLevel);
