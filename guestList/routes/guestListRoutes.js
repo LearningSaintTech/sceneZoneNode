@@ -8,7 +8,8 @@ const {
   approveGuestListRequest,
   getUserDiscountLevel,
   getPendingGuestListRequests,
-  rejectGuestListRequest
+  rejectGuestListRequest,
+  getAllGuestListsForArtist
 } = require('../controller/guestListController');
 
 // Host enables guest list
@@ -30,5 +31,17 @@ router.post('/events/:eventId/reject', authMiddleware(['artist']), rejectGuestLi
 router.get('/events/:eventId/discount', authMiddleware(['user']), getUserDiscountLevel);
 
 router.get('/events/:eventId/pending-requests', authMiddleware(['artist']), getPendingGuestListRequests);
+
+// New: Artist fetches all guest lists for their assigned events
+router.get('/artist/all', authMiddleware(['artist']), getAllGuestListsForArtist);
+
+// New: Host fetches all guest lists for their events
+router.get('/host/all', authMiddleware(['host']), require('../controller/guestListController').getAllGuestListsForHost);
+
+// New: Host fetches guest list for a particular event
+router.get('/host/:eventId', authMiddleware(['host']), require('../controller/guestListController').getGuestListForHostEvent);
+
+// New: Artist fetches guest list for a particular event
+router.get('/artist/:eventId', authMiddleware(['artist']), require('../controller/guestListController').getGuestListForArtistEvent);
 
 module.exports = router;

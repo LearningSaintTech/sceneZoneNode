@@ -378,3 +378,32 @@ exports.getUser = async (req, res) => {
     });
   }
 };
+
+// Delete User Account
+exports.deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.userId; // From authMiddleware
+    const userDoc = await User.findByIdAndDelete(userId);
+    if (!userDoc) {
+      return apiResponse(res, {
+        success: false,
+        message: "User not found",
+        statusCode: 404,
+      });
+    }
+    // Clean up related OTP records
+    await Otp.deleteMany({ mobileNumber: userDoc.mobileNumber });
+    return apiResponse(res, {
+      success: true,
+      message: "User account deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete user error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to delete user account",
+      error: error.message,
+      statusCode: 500,
+    });
+  }
+};

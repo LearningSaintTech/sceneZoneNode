@@ -197,14 +197,13 @@ exports.bookTicket = async (req, res) => {
         });
       }
 
-      let subtotal, fees, tax, discount, totalAmount, orderId = null;
+      let subtotal, fees, tax, totalAmount, orderId = null;
 
       if (event.ticketSetting.ticketType === 'free') {
         console.log('Event is free, setting costs to zero');
         subtotal = 0;
         fees = 0;
         tax = 0;
-        discount = 0;
         totalAmount = 0;
       } else {
         // Validate payment details for paid events
@@ -268,12 +267,14 @@ exports.bookTicket = async (req, res) => {
           });
         }
 
-        discount = event.Discount[guestType] || 0;
-        subtotal = event.ticketSetting.price * numberOfTickets;
+        // Apply discount to price per ticket, not as a flat amount at the end
+        const discount = event.Discount[guestType] || 0;
+        const discountedPrice = event.ticketSetting.price - discount;
+        subtotal = discountedPrice * numberOfTickets;
         fees = invoiceSettings.platformFees;
         const taxRate = invoiceSettings.taxRate;
         tax = (subtotal * taxRate) / 100;
-        totalAmount = subtotal + fees + tax - discount;
+        totalAmount = subtotal + fees + tax;
 
         if (!Number.isFinite(subtotal) || !Number.isFinite(tax) || !Number.isFinite(totalAmount)) {
           console.log('Validation failed: Invalid calculation results');

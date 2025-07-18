@@ -1631,3 +1631,38 @@ exports.getAllEventsHost = async (req, res) => {
     });
   }
 };
+
+// Get discount for a particular event
+exports.getEventDiscount = async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+    const event = await Event.findOne({ _id: eventId, hostId: req.user.hostId });
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found or unauthorized' });
+    }
+    return res.json({ success: true, discount: event.Discount });
+  } catch (error) {
+    console.error('Error fetching event discount:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update discount for a particular event
+exports.updateEventDiscount = async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+    const { Discount } = req.body;
+    const event = await Event.findOneAndUpdate(
+      { _id: eventId, hostId: req.user.hostId },
+      { $set: { Discount } },
+      { new: true }
+    );
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found or unauthorized' });
+    }
+    return res.json({ success: true, discount: event.Discount });
+  } catch (error) {
+    console.error('Error updating event discount:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

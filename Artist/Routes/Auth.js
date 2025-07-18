@@ -6,7 +6,8 @@ const {
   resendOtp,
   login,
   loginWithPassword,
-  getArtist
+  getArtist,
+  deleteAccount
 } = require("../controllers/Auth/Auth");
 
 const {authMiddleware}=require("../../middlewares/authMiddleware")
@@ -17,5 +18,6 @@ router.post("/resend-otp", resendOtp);
 router.post("/login", login);
 router.post("/loginFromPassword", loginWithPassword);
 router.get("/get-artist",authMiddleware(["artist"]),getArtist)
+router.delete("/deleteAccount", authMiddleware(["artist"]), deleteAccount);
 module.exports = router;
 

@@ -14,7 +14,9 @@ const {
   cancelEvent,
   markEventCompleted,
   getBookedArtists,
-  getAllEventsHost
+  getAllEventsHost,
+  getEventDiscount,
+   
 } = require("../controllers/Events/event");
 
 const { authMiddleware } = require("../../middlewares/authMiddleware");
@@ -111,5 +113,8 @@ router.get(
   authMiddleware(["host"]),
   getAllEventsHost
 );
+
+router.get('/events/:eventId/discount', authMiddleware(['host']), getEventDiscount);
+router.patch('/events/update-event-discount/:eventId', authMiddleware(['host']), updateEventDiscount);
 
 module.exports = router;

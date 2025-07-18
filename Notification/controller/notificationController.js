@@ -22,9 +22,10 @@ exports.saveFCMToken = async (req, res) => {
       userType
     });
 
+    // Use fcmToken as the unique key to avoid duplicate key errors
     const result = await FCMToken.findOneAndUpdate(
-      { userId, userType },
-      { fcmToken, deviceId, isActive: true, lastSeen: new Date() },
+      { fcmToken }, // Match on fcmToken, not just userId/userType
+      { userId, userType, deviceId, isActive: true, lastSeen: new Date() },
       { upsert: true, new: true }
     );
 
@@ -168,6 +169,52 @@ exports.getUnreadCount = async (req, res) => {
     res.json({ success: true, count });
   } catch (error) {
     console.error('🔔 [getUnreadCount] Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Remove or deactivate FCM token (logout)
+exports.removeFCMToken = async (req, res) => {
+  console.log('🔔 [removeFCMToken] Request received:', {
+    body: req.body,
+    user: req.user,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    const { fcmToken, deviceId } = req.body;
+    const userId = req.user.hostId || req.user.artistId || req.user.userId;
+    const userType = req.user.role;
+
+    if (!fcmToken && !deviceId) {
+      return res.status(400).json({ success: false, message: 'FCM token or device ID required' });
+    }
+
+    // Deactivate by fcmToken or deviceId for this user
+    const query = { userId, userType };
+    if (fcmToken) query.fcmToken = fcmToken;
+    if (deviceId) query.deviceId = deviceId;
+
+    const result = await FCMToken.findOneAndUpdate(
+      query,
+      { isActive: false },
+      { new: true }
+    );
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'FCM token not found' });
+    }
+
+    console.log('🔔 [removeFCMToken] FCM token deactivated:', {
+      userId,
+      userType,
+      deviceId,
+      fcmToken
+    });
+
+    res.json({ success: true, message: 'FCM token deactivated' });
+  } catch (error) {
+    console.error('🔔 [removeFCMToken] Error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

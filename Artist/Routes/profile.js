@@ -36,6 +36,12 @@ router.patch(
   updateArtistProfile
 );
 
+router.patch(
+  "/set-negotiation-status",
+  authMiddleware(["artist"]),
+  require("../../Artist/controllers/profile/artistProfile").setNegotiationStatus
+);
+
 router.get(
   "/get-all-artists",
   authMiddleware(["host", "admin"]),

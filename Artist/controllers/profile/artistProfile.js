@@ -646,3 +646,54 @@ exports.getArtistPerformance = async (req, res) => {
     });
   }
 };
+
+// Enable/Disable negotiation status for artist profile
+exports.setNegotiationStatus = async (req, res) => {
+  try {
+    const artistId = req.user.artistId;
+    const { isNegotiaitonAvailable } = req.body;
+    console.log(`[${new Date().toISOString()}] [setNegotiationStatus] Processing request for artist ${artistId} with isNegotiaitonAvailable: ${isNegotiaitonAvailable}`);
+
+    console.log(`[${new Date().toISOString()}] [setNegotiationStatus] Validating isNegotiaitonAvailable type for artist ${artistId}`);
+    if (typeof isNegotiaitonAvailable !== 'boolean') {
+      console.warn(`[${new Date().toISOString()}] [setNegotiationStatus] Invalid isNegotiaitonAvailable type: ${typeof isNegotiaitonAvailable} for artist ${artistId}`);
+      return apiResponse(res, {
+        success: false,
+        statusCode: 400,
+        message: 'isNegotiaitonAvailable must be a boolean.'
+      });
+    }
+
+    console.log(`[${new Date().toISOString()}] [setNegotiationStatus] Querying ArtistProfile for artist ${artistId}`);
+    const profile = await ArtistProfile.findOne({ artistId });
+    if (!profile) {
+      console.warn(`[${new Date().toISOString()}] [setNegotiationStatus] ArtistProfile not found for artist ${artistId}`);
+      return apiResponse(res, {
+        success: false,
+        statusCode: 404,
+        message: 'Artist profile not found.'
+      });
+    }
+
+    console.log(`[${new Date().toISOString()}] [setNegotiationStatus] Updating isNegotiaitonAvailable to ${isNegotiaitonAvailable} for artist ${artistId}`);
+    profile.isNegotiaitonAvailable = isNegotiaitonAvailable;
+    console.log(`[${new Date().toISOString()}] [setNegotiationStatus] Saving ArtistProfile for artist ${artistId}`);
+    await profile.save();
+
+    console.log(`[${new Date().toISOString()}] [setNegotiationStatus] Successfully updated negotiation status for artist ${artistId}`);
+    return apiResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: `Negotiation status updated to ${isNegotiaitonAvailable}`,
+      data: profile
+    });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] [setNegotiationStatus] Error for artist ${req.user.artistId}: ${err.message}`);
+    return apiResponse(res, {
+      success: false,
+      statusCode: 500,
+      message: 'Server error',
+      data: { error: err.message }
+    });
+  }
+};

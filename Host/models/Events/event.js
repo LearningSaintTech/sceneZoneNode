@@ -229,4 +229,10 @@ const eventSchema = new mongoose.Schema(
 
 eventSchema.index({ eventName: 1, eventDateTime: 1 });
 
+eventSchema.statics.getDiscountByEventId = async function(eventId) {
+  const event = await this.findById(eventId).select('Discount');
+  if (!event) throw new Error('Event not found');
+  return event.Discount;
+};
+
 module.exports = mongoose.model('Event', eventSchema);

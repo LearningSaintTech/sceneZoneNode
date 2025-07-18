@@ -6,7 +6,8 @@ const {
   resendOtp,
   login,
   loginWithPassword,
-  getUser
+  getUser,
+  deleteAccount
 } = require("../controllers/Auth/Auth");
 
 
@@ -22,5 +23,6 @@ router.post("/loginFromPassword", loginWithPassword);
 
 // Protected route (only accessible with valid token & role "user")
 router.get("/get-user", authMiddleware(["user"]), getUser);
+router.delete("/deleteAccount", authMiddleware(["user"]), deleteAccount);
 
 module.exports = router;

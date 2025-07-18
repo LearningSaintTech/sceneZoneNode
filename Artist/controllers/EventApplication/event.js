@@ -63,3 +63,28 @@ exports.getAllEventsForArtist = async (req, res) => {
     });
   }
 };
+
+// Get all events where the artist is booked (assigned)
+exports.getBookedEventsForArtist = async (req, res) => {
+  try {
+    const artistId = req.user.artistId;
+    // Find all events where artistId is in assignedArtists
+    const events = await Event.find({
+      assignedArtists: artistId
+    }).sort({ eventDateTime: 1 });
+    return apiResponse(res, {
+      success: true,
+      message: "Booked events fetched successfully for artist",
+      data: events,
+      statusCode: 200,
+    });
+  } catch (error) {
+    console.error("Get booked events for artist error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to fetch booked events",
+      data: { error: error.message },
+      statusCode: 500,
+    });
+  }
+};

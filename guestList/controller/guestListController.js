@@ -422,3 +422,191 @@ exports.getPendingGuestListRequests = async (req, res) => {
   }
 };
 
+// Get details for a pending guest list request (for notification details page)
+exports.getPendingGuestListRequestDetails = async (req, res) => {
+  try {
+    const { eventId, userId } = req.params;
+    const artistId = req.user.artistId;
+    // Find the event where the artist is assigned
+    const event = await Event.findOne({
+      _id: eventId,
+      assignedArtists: artistId,
+      eventGuestEnabled: true
+    })
+      .populate('guestList.userId', 'fullName email')
+      .populate('assignedArtists', 'fullName email')
+      .populate('hostId', 'fullName email');
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found or not assigned to artist' });
+    }
+    // Find the guest list entry for the user
+    const guest = event.guestList.find(g => g.userId && g.userId._id.toString() === userId && !g.discountLevel);
+    if (!guest) {
+      return res.status(404).json({ message: 'No pending guest list request for this user' });
+    }
+    // Prepare discount levels and prices
+    const discountLevels = ['level1', 'level2', 'level3'].map(level => {
+      const discountValue = event.Discount[level];
+      let originalPrice = null;
+      let discountedPrice = null;
+      if (event.ticketSetting && event.ticketSetting.ticketType === 'free') {
+        originalPrice = 0;
+        discountedPrice = 0;
+      } else {
+        originalPrice = event.ticketSetting?.price || event.budget || 0;
+        discountedPrice = originalPrice * (1 - discountValue / 100);
+      }
+      return {
+        level,
+        discountValue,
+        originalPrice,
+        discountedPrice
+      };
+    });
+    res.json({
+      success: true,
+      data: {
+        event: {
+          eventId: event._id,
+          eventName: event.eventName,
+          eventDateTime: event.eventDateTime,
+          location: event.location,
+          host: event.hostId,
+        },
+        user: guest.userId,
+        discountLevels
+      }
+    });
+  } catch (error) {
+    console.error('Error in getPendingGuestListRequestDetails:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get all guest list entries for all events where the artist is assigned
+exports.getAllGuestListsForArtist = async (req, res) => {
+  try {
+    const artistId = req.user.artistId;
+    // Find all events where artistId is in assignedArtists and guest list is enabled
+    const events = await Event.find({
+      assignedArtists: artistId,
+      eventGuestEnabled: true
+    })
+      .populate('guestList.userId', 'fullName email')
+      .sort({ eventDateTime: 1 });
+
+    // Map to return event info and guest list
+    const result = events.map(event => ({
+      eventId: event._id,
+      eventName: event.eventName,
+      eventDateTime: event.eventDateTime,
+      guestList: event.guestList.map(guest => ({
+        userId: guest.userId?._id,
+        fullName: guest.userId?.fullName,
+        email: guest.userId?.email,
+        discountLevel: guest.discountLevel || null
+      }))
+    }));
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error in getAllGuestListsForArtist:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get all guest list entries for all events where the host is the owner
+exports.getAllGuestListsForHost = async (req, res) => {
+  try {
+    const hostId = req.user.hostId;
+    // Find all events where hostId is the owner and guest list is enabled
+    const events = await Event.find({
+      hostId: hostId,
+      eventGuestEnabled: true
+    })
+      .populate('guestList.userId', 'fullName email')
+      .sort({ eventDateTime: 1 });
+
+    // Map to return event info and guest list
+    const result = events.map(event => ({
+      eventId: event._id,
+      eventName: event.eventName,
+      eventDateTime: event.eventDateTime,
+      guestList: event.guestList.map(guest => ({
+        userId: guest.userId?._id,
+        fullName: guest.userId?.fullName,
+        email: guest.userId?.email,
+        discountLevel: guest.discountLevel || null
+      }))
+    }));
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error in getAllGuestListsForHost:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get guest list for a particular event for the host
+exports.getGuestListForHostEvent = async (req, res) => {
+  try {
+    const hostId = req.user.hostId;
+    const eventId = req.params.eventId;
+
+    const event = await Event.findOne({
+      _id: eventId,
+      hostId: hostId,
+      eventGuestEnabled: true
+    }).populate('guestList.userId', 'fullName email');
+
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found or guest list not enabled.' });
+    }
+
+    const guestList = event.guestList.map(guest => ({
+      userId: guest.userId?._id,
+      fullName: guest.userId?.fullName,
+      email: guest.userId?.email,
+      discountLevel: guest.discountLevel || null
+    }));
+
+    res.json({
+      success: true,
+      eventId: event._id,
+      eventName: event.eventName,
+      eventDateTime: event.eventDateTime,
+      guestList,
+      discount: event.Discount
+    });
+  } catch (error) {
+    console.error('Error in getGuestListForHostEvent:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get guest list for a particular event for the artist
+exports.getGuestListForArtistEvent = async (req, res) => {
+  try {
+    const artistId = req.user.artistId;
+    const eventId = req.params.eventId;
+    const event = await Event.findOne({
+      _id: eventId,
+      assignedArtists: artistId,
+      eventGuestEnabled: true
+    }).populate('guestList.userId', 'fullName email');
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found or guest list not enabled or you are not assigned.' });
+    }
+    const guestList = event.guestList.map(guest => ({
+      userId: guest.userId?._id,
+      fullName: guest.userId?.fullName,
+      email: guest.userId?.email,
+      discountLevel: guest.discountLevel || null
+    }));
+    res.json({ success: true, eventId: event._id, eventName: event.eventName, eventDateTime: event.eventDateTime, guestList });
+  } catch (error) {
+    console.error('Error in getGuestListForArtistEvent:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+

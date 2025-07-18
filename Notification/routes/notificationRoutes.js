@@ -19,6 +19,9 @@ router.patch('/mark-all-read', authMiddleware(['host', 'artist', 'user']), notif
 // Get unread count (for all user types)
 router.get('/unread-count', authMiddleware(['host', 'artist', 'user']), notificationController.getUnreadCount);
 
+// Remove or deactivate FCM token (for all user types)
+router.post('/remove-fcm-token', authMiddleware(['host', 'artist', 'user']), notificationController.removeFCMToken);
+
 // Debug routes (for all user types)
 router.get('/debug/health', authMiddleware(['host', 'artist', 'user']), notificationDebugController.debugNotificationHealth);
 router.post('/debug/test', authMiddleware(['host', 'artist', 'user']), notificationDebugController.testNotification);

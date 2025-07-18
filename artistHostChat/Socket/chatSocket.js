@@ -1,7 +1,7 @@
 import io from 'socket.io-client';
 
 // Initialize Socket.IO connection
-const socket = io('https://api.thescenezone.com', {
+const socket = io('http://192.168.1.73:3000', {
   transports: ['websocket'],
   autoConnect: false,
 });

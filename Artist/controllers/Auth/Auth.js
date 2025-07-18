@@ -462,3 +462,32 @@ exports.getArtist = async (req, res) => {
     });
   }
 };
+
+// Delete Artist Account
+exports.deleteAccount = async (req, res) => {
+  try {
+    const artistId = req.user.artistId; // From authMiddleware
+    const artistUser = await artist.findByIdAndDelete(artistId);
+    if (!artistUser) {
+      return apiResponse(res, {
+        success: false,
+        message: "Artist not found",
+        statusCode: 404,
+      });
+    }
+    // Clean up related OTP records
+    await Otp.deleteMany({ mobileNumber: artistUser.mobileNumber });
+    return apiResponse(res, {
+      success: true,
+      message: "Artist account deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete artist error:", error);
+    return apiResponse(res, {
+      success: false,
+      message: "Failed to delete artist account",
+      error: error.message,
+      statusCode: 500,
+    });
+  }
+};
