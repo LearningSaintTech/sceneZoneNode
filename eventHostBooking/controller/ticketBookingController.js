@@ -205,6 +205,7 @@ exports.bookTicket = async (req, res) => {
         fees = 0;
         tax = 0;
         totalAmount = 0;
+        discount = 0; // Fix: always define discount for free events
       } else {
         // Validate payment details for paid events
         if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {

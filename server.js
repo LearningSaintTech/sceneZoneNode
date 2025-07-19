@@ -157,7 +157,7 @@ app.use("/api/admin", [
   filterUsers,
   appUsers,
   adminForgotPassword,
-]);
+])
 app.use("/api/admin/banner", bannerRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/bookings", bookingRoutes);
