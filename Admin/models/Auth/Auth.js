@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const AdminAuth = new mongoose.Schema({
+const AdminAuthh = new mongoose.Schema({
   fullName: {
     type: String,
     required: true,
@@ -33,6 +33,6 @@ const AdminAuth = new mongoose.Schema({
   }
 });
 
-module.exports = mongoose.model('AdminAuth', AdminAuth);
+module.exports = mongoose.model('AdminAuthh', AdminAuthh);
 
 
