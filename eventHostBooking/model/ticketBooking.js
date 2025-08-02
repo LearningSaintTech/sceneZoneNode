@@ -68,6 +68,10 @@ const ticketBookingSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
+  isRefunded:{
+    type:Boolean,
+    default:false
+  },
   createdAt: {
     type: Date,
     default: Date.now,

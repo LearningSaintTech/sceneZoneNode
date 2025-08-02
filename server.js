@@ -43,7 +43,7 @@ const rateArtist = require("./Host/Routes/Rating");
 const ticketSettingRoutes = require("./Host/Routes/ticketSetting");
 
 // Admin Routes
-const adminAuthentication = require("./Admin/Routes/Auth");
+// const adminAuthentication = require("./Admin/Routes/Auth");
 const adminVerify = require("./Admin/Routes/Verification");
 const adminProfile = require("./Admin/Routes/profile");
 const createUser = require("./Admin/Routes/createUser");
@@ -61,6 +61,14 @@ const notificationRoutes = require("./Notification/routes/notificationRoutes");
 // Event Host Routes
 const eventHostInvoiceRoutes = require("./eventHostBooking/routes/adminRoutes");
 const eventHostTicketBookingRoutes = require("./eventHostBooking/routes/ticketBookingRoutes");
+
+//Admin Panel Routes
+const adminauthRoutes = require("./admin-panel/routes/authRoutes");
+const countUsers = require("./admin-panel/routes/usercountRoutes");
+const getUsers = require("./admin-panel/routes/getUsersRoutes");
+const getEventRoutes = require("./admin-panel/routes/getEventsRoutes");
+const adminProfileRoutes = require("./admin-panel/routes/profileRoutes");
+const getpaymentdetailRoutes = require("./admin-panel/routes/getPaymentsRoutes");
 
 const app = express();
 const server = http.createServer(app);
@@ -157,7 +165,7 @@ app.use("/api/host", [
 app.use("/api/host/events", events);
 
 // Admin Routes
-app.use("/api/admin/auth", adminAuthentication);
+// app.use("/api/admin/auth", adminAuthentication);
 app.use("/api/admin", [
   adminVerify,
   adminProfile,
@@ -178,6 +186,15 @@ app.use("/api/eventhost/tickets", eventHostTicketBookingRoutes);
 
 // Notification Routes (for all user types)
 app.use("/api/notifications", notificationRoutes);
+
+
+//Admin panel routes
+app.use("/api/admin/auth",adminauthRoutes);
+app.use("/api/admin/count",countUsers);
+app.use("/api/admin/users",getUsers);
+app.use("/api/admin/events",getEventRoutes);
+app.use("/api/admin/profile",adminProfileRoutes);
+app.use("/api/admin/payments",getpaymentdetailRoutes)
 
 // Start Server
 server.listen(PORT, "0.0.0.0", () =>

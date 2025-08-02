@@ -54,4 +54,4 @@ const adminProfileSchema = new mongoose.Schema({
     }
 });
 
-module.exports = mongoose.model('AdminProfile', adminProfileSchema);
+module.exports = mongoose.model('AdminProfileee', adminProfileSchema);
